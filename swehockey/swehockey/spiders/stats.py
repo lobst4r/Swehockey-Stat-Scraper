@@ -85,39 +85,49 @@ class StatsSpider(scrapy.Spider):
     def parse_game_actions(self, response, swehockey_id):
         goalies_stats = response.xpath("(//table[@class='tblContent'])[2]")
 
-        # goalies_teams = actions.xpath("((//table[@class='tblContent'])[2]/tr/th/h3)[2]/ancestor::tr[1]/preceding-sibling::tr/td[3]")
-        # goalies_teams = [team.xpath(".//text()").get() for team in goalies_teams]
         goalies_teams = self.get_goalies(goalies_stats, 3)
         goalies = self.get_goalies(goalies_stats, 4)
         goalies_saves = self.get_goalies(goalies_stats, 5)
-        #actions = response.xpath("((//table[@class='tblContent'])[2]//tr/th[@class='tdSubTitle'])[2]/ancestor::node()/following-sibling::tr[not(.//th)]")
 
         # Find the last period of the game (including overtime) and extract data from each period
         actions = response.xpath("((//table[@class='tblContent'])[2]//tr/th/h3[contains(text(), 'Overtime') or contains(text(), 'overtime') or contains(text(), '3rd period')])[1]/ancestor::node()/following-sibling::tr[not(.//th)]")
         game_events = []
         for action in actions:
-            time =  (action.xpath(".//td[1]/text()").get() or "").strip()
+            time = (action.xpath(".//td[1]/text()").get() or "").strip()
             event = (action.xpath(".//td[2]/text()").get() or "").strip()
             team = (action.xpath(".//td[3]/text()").get() or "").strip()
-            player = " ".join(action.xpath(".//td[4]/text()").get().split())
-            details = " ".join((action.xpath(".//td[5]/text()").get() or "").split())
-            game_events.append([time, event, team, player, details])
+            player = " ".join((action.xpath(".//td[4]/text()").get() or "")
+                              .split())
+            assist_1 = " ".join((action.xpath(".//td[4]/span[2]/div/text()")
+                                 .get() or "").split())
+            assist_2 = " ".join((action.xpath(".//td[4]/span[3]/div/text()")
+                                 .get() or "").split())
+            details_1 = " ".join((action.xpath(".//td[5]/text()").get() or "")
+                                 .split())
+            details_2 = " ".join((action.xpath(".//td[5]/text()[2]").get() or "")
+                                 .split())
+            game_events.append([time, event, team, player, assist_1, assist_2, details_1, details_2])
 
         # Get shootout data (if any)
         shootout_actions = response.xpath("((//table[@class='tblContent'])[2]/tr/th/h3[contains(text(), 'Game Winning Shots')])[1]/ancestor::tr[1]/following-sibling::tr/th/ancestor::tr[1]/preceding-sibling::tr/td[contains(text(), 'Missed') or contains(text(), 'Scored')]/ancestor::tr[1]")
         shootout_events = []
         for action in shootout_actions:
-            scored = " ".join(action.xpath(".//td[1]/text()").get().split())
-            score = " ".join(action.xpath(".//td[2]/text()").get().split())
-            team = " ".join(action.xpath(".//td[3]/text()").get().split())
-            player = " ".join(action.xpath(".//td[4]/div[1]/text()").get().split())
-            goalie = " ".join(action.xpath(".//td[4]/div[2]/text()").get().split())
+            scored = " ".join((action.xpath(".//td[1]/text()").get() or "")
+                              .split())
+            score = " ".join((action.xpath(".//td[2]/text()").get() or "")
+                             .split())
+            team = " ".join((action.xpath(".//td[3]/text()").get() or "")
+                            .split())
+            player = " ".join((action.xpath(".//td[4]/div[1]/text()").get() or "")
+                              .split())
+            goalie = " ".join((action.xpath(".//td[4]/div[2]/text()").get() or "")
+                              .split())
             shootout_events.append([scored, score, team, player, goalie])
 
         yield {
             'goalies_teams': goalies_teams,
-            # 'goalies': goalies,
-            # 'goalies_saves': goalies_saves,
+            'goalies': goalies,
+            'goalies_saves': goalies_saves,
             'game_events': game_events,
             'shootout_events': shootout_events
         }
@@ -135,4 +145,4 @@ class StatsSpider(scrapy.Spider):
 
     def get_goalies(self, goalies_stats, td):
         goalies = goalies_stats.xpath(f"((//table[@class='tblContent'])[2]/tr/th/h3)[2]/ancestor::tr[1]/preceding-sibling::tr/td[{td}]")
-        return [team.xpath(".//text()").get().strip() for team in goalies]
+        return [" ".join((team.xpath(".//text()").get() or "").split()) for team in goalies]
