@@ -189,11 +189,11 @@ class StatsSpider(scrapy.Spider):
                 # offensive players, which is information we want to
                 # retain.
                prev_line_name = line_name
-                line_up[line_name] = {}
-                line_up[line_name]['players_row_1'] = players
+               line_up[line_name] = {}
+               line_up[line_name]['players_row_1'] = players
             else:
-                line_name = prev_line_name
-                line_up[line_name]['players_row_2'] = players
+               line_name = prev_line_name
+               line_up[line_name]['players_row_2'] = players
 
         starting_players = line_up_raw.xpath(".//*[contains(@class, 'red')]/text()").getall()
         starting_players = [" ".join((player or "").split()) for player in starting_players]
