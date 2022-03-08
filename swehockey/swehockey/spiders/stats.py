@@ -144,26 +144,10 @@ class StatsSpider(scrapy.Spider):
         away_team_coaches = [" ".join(coach.split()) for coach in away_team_coaches]
 
 
-        home_team_lineup = response.xpath("((//table[@class='tblContent'])[4]//tr/th[contains(@class, 'tdSubTitle')])[2]/ancestor::tr[1]/preceding-sibling::tr/descendant::*[contains(@style, 'text-align')]/ancestor::tr[1]")
-        line_up_home = {}
-        prev_line_name = ""
-        for line in home_team_lineup:
-            line_name = line.xpath(".//th/strong/text()").get()
-            players = [" ".join((player or "").split()) for player in line
-                       .xpath(".//td/div/text()").getall()]
-            if line_name:
-                # If there is a line name ("1st line" for example),
-                # that means we are looking at the defensive players
-                # for the home team. Otherwise we are looking at the
-                # offensive players, which is information we want to
-                # retain.
-                prev_line_name = line_name
-                line_up_home[line_name] = {}
-                line_up_home[line_name]['players_row_1'] = players
-            else:
-                line_name = prev_line_name
-                line_up_home[line_name]['players_row_2'] = players
-                
+        line_up_home_raw = response.xpath("((//table[@class='tblContent'])[4]//tr/th[contains(@class, 'tdSubTitle')])[2]/ancestor::tr[1]/preceding-sibling::tr/descendant::*[contains(@style, 'text-align')]/ancestor::tr[1]")
+        line_up_home = self.get_line_up(line_up_home_raw)
+        line_up_away_raw = response.xpath("((//table[@class='tblContent'])[4]//tr/th[contains(@class, 'tdSubTitle')])[2]/ancestor::tr[1]/following-sibling::tr/td[contains(@style, 'text-align')]/ancestor::tr[1]")
+        line_up_away = self.get_line_up(line_up_away_raw)        
 
             
             
@@ -173,7 +157,8 @@ class StatsSpider(scrapy.Spider):
             'linesmen': linesmen,
             'home_team_coaches': home_team_coaches,
             'away_team_coaches': away_team_coaches,
-            'line_up_home': line_up_home
+            'line_up_home': line_up_home,
+            'line_up_away': line_up_away
         }
         
     # Helper function to parse a common pattern describing basic stats by
@@ -189,3 +174,28 @@ class StatsSpider(scrapy.Spider):
     def get_goalies(self, goalies_stats, td):
         goalies = goalies_stats.xpath(f"((//table[@class='tblContent'])[2]/tr/th/h3)[2]/ancestor::tr[1]/preceding-sibling::tr/td[{td}]")
         return [" ".join((team.xpath(".//text()").get() or "").split()) for team in goalies]
+
+    def get_line_up(self, line_up_raw):
+        line_up= {}
+        prev_line_name = ""
+        for line in line_up_raw:
+            line_name = line.xpath(".//*/strong/text()").get()
+            players = [" ".join((player or "").split()) for player in line
+                       .xpath(".//td/div/text()").getall()]
+            if line_name:
+                # If there is a line name ("1st line" for example),
+                # that means we are looking at the defensive players
+                # for the home team. Otherwise we are looking at the
+                # offensive players, which is information we want to
+                # retain.
+               prev_line_name = line_name
+                line_up[line_name] = {}
+                line_up[line_name]['players_row_1'] = players
+            else:
+                line_name = prev_line_name
+                line_up[line_name]['players_row_2'] = players
+
+        starting_players = line_up_raw.xpath(".//*[contains(@class, 'red')]/text()").getall()
+        starting_players = [" ".join((player or "").split()) for player in starting_players]
+        line_up['starting_players'] = starting_players
+        return line_up
