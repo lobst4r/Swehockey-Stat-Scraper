@@ -16,9 +16,10 @@ class StatsSpider(scrapy.Spider):
             # Extract only the URL from the href
             url = game_link.split("'")[1]
             swehockey_id = url.split("/")[3]
+            line_up_url = f"/Game/LineUps/{swehockey_id}"
 
             # Open Game Event link
-            yield response.follow(url=url, callback=self.parse_game_actions, cb_kwargs={'swehockey_id': swehockey_id})
+            yield response.follow(url=line_up_url, callback=self.parse_line_up, cb_kwargs={'swehockey_id': swehockey_id})
 
     def parse_stats_summary(self, response, swehockey_id):
         game_info = response.xpath("//table[@class='tblContent'][1]")
@@ -132,7 +133,49 @@ class StatsSpider(scrapy.Spider):
             'shootout_events': shootout_events
         }
 
+    def parse_line_up(self, response, swehockey_id):
+        refs = response.xpath("(//table[@class='tblContent'])[2]//tr[1]/td[2]/text()").get()
+        refs = [ref.strip() for ref in (refs or "").split(",")]
+        linesmen = response.xpath("(//table[@class='tblContent'])[2]//tr[2]/td[2]/text()").get()
+        linesmen = [linesman.strip() for linesman in (linesmen or "").split(",")]
+        home_team_coaches = response.xpath("(//table[@class='tblContent'])[4]//tr[3]/td[2]/table/tr/td/text()").getall()
+        home_team_coaches = [" ".join(coach.split()) for coach in home_team_coaches]
+        away_team_coaches = response.xpath("(//table[@class='tblContent'])[4]//tr[3]/following-sibling::tr[last()]//table/tr/td/text()").getall()
+        away_team_coaches = [" ".join(coach.split()) for coach in away_team_coaches]
 
+
+        home_team_lineup = response.xpath("((//table[@class='tblContent'])[4]//tr/th[contains(@class, 'tdSubTitle')])[2]/ancestor::tr[1]/preceding-sibling::tr/descendant::*[contains(@style, 'text-align')]/ancestor::tr[1]")
+        line_up_home = {}
+        prev_line_name = ""
+        for line in home_team_lineup:
+            line_name = line.xpath(".//th/strong/text()").get()
+            players = [" ".join((player or "").split()) for player in line
+                       .xpath(".//td/div/text()").getall()]
+            if line_name:
+                # If there is a line name ("1st line" for example),
+                # that means we are looking at the defensive players
+                # for the home team. Otherwise we are looking at the
+                # offensive players, which is information we want to
+                # retain.
+                prev_line_name = line_name
+                line_up_home[line_name] = {}
+                line_up_home[line_name]['players_row_1'] = players
+            else:
+                line_name = prev_line_name
+                line_up_home[line_name]['players_row_2'] = players
+                
+
+            
+            
+        yield {
+            'swehockey_id': swehockey_id,
+            'refs': refs,
+            'linesmen': linesmen,
+            'home_team_coaches': home_team_coaches,
+            'away_team_coaches': away_team_coaches,
+            'line_up_home': line_up_home
+        }
+        
     # Helper function to parse a common pattern describing basic stats by
     # period.
     def get_stats_by_period(self, game_info, tr, td, int_list=True):
