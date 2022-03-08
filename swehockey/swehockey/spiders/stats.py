@@ -18,9 +18,9 @@ class StatsSpider(scrapy.Spider):
             swehockey_id = url.split("/")[3]
 
             # Open Game Event link
-            yield response.follow(url=url, callback=self.parse_game, cb_kwargs={'swehockey_id': swehockey_id})
+            yield response.follow(url=url, callback=self.parse_game_actions, cb_kwargs={'swehockey_id': swehockey_id})
 
-    def parse_game(self, response, swehockey_id):
+    def parse_stats_summary(self, response, swehockey_id):
         game_info = response.xpath("//table[@class='tblContent'][1]")
 
         teams = game_info.xpath("//tr/th/h2/text()").get()
@@ -57,8 +57,6 @@ class StatsSpider(scrapy.Spider):
         score_team_1 = [goals[0] for goals in score]
         score_team_2 = [goals[1] for goals in score]
 
-
-
         yield {
             'game_stats': {
                 'team_1': teams[0],
@@ -84,6 +82,47 @@ class StatsSpider(scrapy.Spider):
              }
         }
 
+    def parse_game_actions(self, response, swehockey_id):
+        goalies_stats = response.xpath("(//table[@class='tblContent'])[2]")
+
+        # goalies_teams = actions.xpath("((//table[@class='tblContent'])[2]/tr/th/h3)[2]/ancestor::tr[1]/preceding-sibling::tr/td[3]")
+        # goalies_teams = [team.xpath(".//text()").get() for team in goalies_teams]
+        goalies_teams = self.get_goalies(goalies_stats, 3)
+        goalies = self.get_goalies(goalies_stats, 4)
+        goalies_saves = self.get_goalies(goalies_stats, 5)
+        #actions = response.xpath("((//table[@class='tblContent'])[2]//tr/th[@class='tdSubTitle'])[2]/ancestor::node()/following-sibling::tr[not(.//th)]")
+
+        # Find the last period of the game (including overtime) and extract data from each period
+        actions = response.xpath("((//table[@class='tblContent'])[2]//tr/th/h3[contains(text(), 'Overtime') or contains(text(), 'overtime') or contains(text(), '3rd period')])[1]/ancestor::node()/following-sibling::tr[not(.//th)]")
+        game_events = []
+        for action in actions:
+            time =  (action.xpath(".//td[1]/text()").get() or "").strip()
+            event = (action.xpath(".//td[2]/text()").get() or "").strip()
+            team = (action.xpath(".//td[3]/text()").get() or "").strip()
+            player = " ".join(action.xpath(".//td[4]/text()").get().split())
+            details = " ".join((action.xpath(".//td[5]/text()").get() or "").split())
+            game_events.append([time, event, team, player, details])
+
+        # Get shootout data (if any)
+        shootout_actions = response.xpath("((//table[@class='tblContent'])[2]/tr/th/h3[contains(text(), 'Game Winning Shots')])[1]/ancestor::tr[1]/following-sibling::tr/th/ancestor::tr[1]/preceding-sibling::tr/td[contains(text(), 'Missed') or contains(text(), 'Scored')]/ancestor::tr[1]")
+        shootout_events = []
+        for action in shootout_actions:
+            scored = " ".join(action.xpath(".//td[1]/text()").get().split())
+            score = " ".join(action.xpath(".//td[2]/text()").get().split())
+            team = " ".join(action.xpath(".//td[3]/text()").get().split())
+            player = " ".join(action.xpath(".//td[4]/div[1]/text()").get().split())
+            goalie = " ".join(action.xpath(".//td[4]/div[2]/text()").get().split())
+            shootout_events.append([scored, score, team, player, goalie])
+
+        yield {
+            'goalies_teams': goalies_teams,
+            # 'goalies': goalies,
+            # 'goalies_saves': goalies_saves,
+            'game_events': game_events,
+            'shootout_events': shootout_events
+        }
+
+
     # Helper function to parse a common pattern describing basic stats by
     # period.
     def get_stats_by_period(self, game_info, tr, td, int_list=True):
@@ -93,3 +132,7 @@ class StatsSpider(scrapy.Spider):
             stat = stat.split(":")
             return [int(x) for x in stat]
         return stat
+
+    def get_goalies(self, goalies_stats, td):
+        goalies = goalies_stats.xpath(f"((//table[@class='tblContent'])[2]/tr/th/h3)[2]/ancestor::tr[1]/preceding-sibling::tr/td[{td}]")
+        return [team.xpath(".//text()").get().strip() for team in goalies]
