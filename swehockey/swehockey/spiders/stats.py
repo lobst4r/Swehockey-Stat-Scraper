@@ -196,6 +196,22 @@ class StatsSpider(scrapy.Spider):
                line_up[line_name]['players_row_2'] = players
 
         starting_players = line_up_raw.xpath(".//*[contains(@class, 'red')]/text()").getall()
-        starting_players = [" ".join((player or "").split()) for player in starting_players]
+        starting_players = [clean(player) for player in starting_players]
         line_up['starting_players'] = starting_players
         return line_up
+
+
+
+def clean(text=""):
+    # Remove all extra whitespace in a string.
+    # Return an empty string if no string
+    # is passed as an argument.
+    return " ".join((text or "").split())
+
+def split_string(text, separator=None):
+    # Splits a string.
+    # Returns an empty string if
+    # no string is passed as an argument.
+    # This is used for when a function might
+    # return a null value.
+    return (text or "").split(separator)
