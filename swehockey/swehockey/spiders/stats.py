@@ -207,10 +207,12 @@ def clean(text=""):
     # Return an empty string if no string
     # is passed as an argument.
     return " ".join((text or "").split())
+def clean_list(l=[]):
+    return [clean(item) for item in l]
 
 def split_string(text, separator=None):
-    # Splits a string.
-    # Returns an empty string if
+    # Split a string.
+    # Return an empty string if
     # no string is passed as an argument.
     # This is used for when a function might
     # return a null value.
