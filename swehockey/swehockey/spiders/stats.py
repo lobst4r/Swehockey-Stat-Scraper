@@ -1,14 +1,15 @@
 import scrapy
 import re
+import logging
 
-START_DATE = "2022-03-02"
-END_DATE = "2022-03-08"
+START_DATE = "2020-01-01"
+END_DATE = "2022-12-31"
 
 
 class StatsSpider(scrapy.Spider):
     name = "stats"
     allowed_domains = ["stats.swehockey.se"]
-    start_urls = ["https://stats.swehockey.se/GamesByDate/2022-03-02"]
+    start_urls = [f"https://stats.swehockey.se/GamesByDate/{START_DATE}"]
 
     def parse(self, response):
 
@@ -49,6 +50,23 @@ class StatsSpider(scrapy.Spider):
             yield response.follow(url=next_page_url, callback=self.parse)
 
     def parse_stats_summary(self, response, swehockey_id):
+        game_ended_strings = [
+            "Final Score",
+            "Game Finished",
+            "Game Winning Shots ended",
+        ]
+        game_status = clean(
+            response.xpath("//td[@class='tdInfoArea']/div[3]/text()").get()
+        )
+
+        # Check if game has ended, in order to avoid errors
+        # and find abnormalities.
+        if not any(txt in game_status for txt in game_ended_strings):
+            logging.warning(
+                f"Game not finished or invalid. URL: https://stats.swehockey.se/Game/Events/{swehockey_id}\nStatus: '{game_status}'"
+            )
+            return
+
         line_up_url = f"/Game/LineUps/{swehockey_id}"
         game_info = response.xpath("//table[@class='tblContent'][1]")
 
@@ -377,10 +395,12 @@ class StatsSpider(scrapy.Spider):
                     details["on_ice_plus"] = [
                         int(x)
                         for x in clean_list(details_1.split(":")[1].split(","))
+                        if x
                     ]
                     details["on_ice_minus"] = [
                         int(x)
                         for x in clean_list(details_2.split(":")[1].split(","))
+                        if x
                     ]
             # Penalty Shot (the details and outcome of the penalty shot
             # is in another event)
