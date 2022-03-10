@@ -1,11 +1,14 @@
 import scrapy
 import re
 
+START_DATE = "2022-03-02"
+END_DATE = "2022-03-08"
+
 
 class StatsSpider(scrapy.Spider):
     name = "stats"
     allowed_domains = ["stats.swehockey.se"]
-    start_urls = ["https://stats.swehockey.se/GamesByDate/2022-03-06"]
+    start_urls = ["https://stats.swehockey.se/GamesByDate/2022-03-02"]
 
     def parse(self, response):
 
@@ -23,19 +26,38 @@ class StatsSpider(scrapy.Spider):
             # Open Game Event link
             yield response.follow(
                 url=url,
-                callback=self.parse_game_actions,
+                callback=self.parse_stats_summary,
                 cb_kwargs={"swehockey_id": swehockey_id},
             )
 
+        next_page_url = response.xpath(
+            "//div[@class='form-group btn-group']/a[2]/@href"
+        ).get()
+
+        next_page_date = int(
+            clean(
+                response.xpath(
+                    "//div[@class='form-group btn-group']/a[2]/text()"
+                )
+                .get()
+                .replace(">>", "")
+                .replace("-", "")
+            )
+        )
+
+        if next_page_date < int(END_DATE.replace("-", "")):
+            yield response.follow(url=next_page_url, callback=self.parse)
+
     def parse_stats_summary(self, response, swehockey_id):
+        line_up_url = f"/Game/LineUps/{swehockey_id}"
         game_info = response.xpath("//table[@class='tblContent'][1]")
 
         teams = game_info.xpath("//tr/th/h2/text()").get()
-        teams = [team.strip() for team in teams.split("-")]
+        teams = clean_list([clean(team) for team in teams.split("-")])
 
-        date_time = game_info.xpath("//tr[2]/td[1]/h3/text()").get()
-        league = game_info.xpath("//tr[2]/td[2]/h3/text()").get()
-        arena = game_info.xpath("//tr[2]/td[3]/h3/b/text()").get()
+        date_time = clean(game_info.xpath("//tr[2]/td[1]/h3/text()").get())
+        league = clean(game_info.xpath("//tr[2]/td[2]/h3/text()").get())
+        arena = clean(game_info.xpath("//tr[2]/td[3]/h3/b/text()").get())
 
         shots_team_1 = self.get_stats_by_period(game_info, 3, 3)
         shots_team_2 = self.get_stats_by_period(game_info, 3, 7)
@@ -84,43 +106,51 @@ class StatsSpider(scrapy.Spider):
         # Separate score by team
         score_team_1 = [goals[0] for goals in score]
         score_team_2 = [goals[1] for goals in score]
-
-        yield {
-            "swehockey_id": swehockey_id,
-            "game_stats": {
-                "team_1": teams[0],
-                "team_2": teams[1],
-                "date_time": date_time,
-                "league": league,
-                "arena": arena,
-                "shots_team_1": shots_team_1,
-                "shots_team_2": shots_team_2,
-                "shots_sum_team_1": sum(shots_team_1),
-                "shots_sum_team_2": sum(shots_team_2),
-                "saves_team_1": saves_team_1,
-                "saves_team_2": saves_team_2,
-                "saves_sum_team_1": sum(saves_team_1),
-                "saves_sum_team_2": sum(saves_team_2),
-                "pim_team_1": pim_team_1,
-                "pim_team_2": pim_team_2,
-                "pim_sum_team_1": sum(pim_team_1),
-                "pim_sum_team_2": sum(pim_team_2),
-                "pp_time_team_1": pp_time_team_1,
-                "pp_time_team_2": pp_time_team_2,
-                "pp_perc_team_1": pp_perc_team_1,
-                "pp_perc_team_2": pp_perc_team_2,
-                "score": score,
-                "score_team_1": score_team_1,
-                "score_team_2": score_team_2,
-                "spectators": spectators,
-            },
+        game = {}
+        game["swehockey_id"] = swehockey_id
+        game["stats"] = {
+            "team_1": teams[0],
+            "team_2": teams[1],
+            "date_time": date_time,
+            "league": league,
+            "arena": arena,
+            "shots_team_1": shots_team_1,
+            "shots_team_2": shots_team_2,
+            "shots_sum_team_1": sum(shots_team_1),
+            "shots_sum_team_2": sum(shots_team_2),
+            "saves_team_1": saves_team_1,
+            "saves_team_2": saves_team_2,
+            "saves_sum_team_1": sum(saves_team_1),
+            "saves_sum_team_2": sum(saves_team_2),
+            "pim_team_1": pim_team_1,
+            "pim_team_2": pim_team_2,
+            "pim_sum_team_1": sum(pim_team_1),
+            "pim_sum_team_2": sum(pim_team_2),
+            "pp_time_team_1": pp_time_team_1,
+            "pp_time_team_2": pp_time_team_2,
+            "pp_perc_team_1": pp_perc_team_1,
+            "pp_perc_team_2": pp_perc_team_2,
+            "score": score,
+            "score_team_1": score_team_1,
+            "score_team_2": score_team_2,
+            "spectators": spectators,
         }
+        game["events"] = self.parse_game_actions(response, swehockey_id)
+        # Open Game Event link
+        yield response.follow(
+            url=line_up_url,
+            callback=self.parse_line_up,
+            cb_kwargs={"swehockey_id": swehockey_id, "game": game},
+        )
 
     def parse_game_actions(self, response, swehockey_id):
         goalies_stats = response.xpath("(//table[@class='tblContent'])[2]")
 
         goalies_teams = self.get_goalies(goalies_stats, 3)
-        goalies = self.get_goalies(goalies_stats, 4)
+        goalies = [
+            self.parse_player(goalie)
+            for goalie in self.get_goalies(goalies_stats, 4)
+        ]
         goalies_saves = self.get_goalies(goalies_stats, 5)
 
         # Find the last period of the game (including overtime) and extract data from each period
@@ -148,21 +178,15 @@ class StatsSpider(scrapy.Spider):
             assist_2 = self.parse_player(
                 action.xpath(".//td[4]/span[3]/div/text()").get()
             )
-            details_1 = " ".join(
-                (
-                    action.xpath(".//td[5]/descendant-or-self::text()").get()
-                    or ""
-                ).split()
+            details_1 = clean(
+                action.xpath(".//td[5]/descendant-or-self::text()").get()
             )
-            details_2 = " ".join(
-                (
-                    action.xpath(
-                        ".//td[5]/descendant-or-self::text()[2]"
-                    ).get()
-                    or ""
-                ).split()
+            details_2 = clean(
+                action.xpath(".//td[5]/descendant-or-self::text()[2]").get()
             )
-            dets = self.parse_event_detail(details_1, details_2, player, event)
+            details = self.parse_event_detail(
+                details_1, details_2, player, event
+            )
             game_events.append(
                 [
                     time,
@@ -173,34 +197,25 @@ class StatsSpider(scrapy.Spider):
                     assist_2,
                     details_1,
                     details_2,
-                    dets,
+                    details,
                 ]
             )
 
         # Get shootout data (if any)
+        # TODO: Clean shootout data
         shootout_actions = response.xpath(
             "((//table[@class='tblContent'])[2]/tr/th/h3[contains(text(), 'Game Winning Shots')])[1]/ancestor::tr[1]/following-sibling::tr/th/ancestor::tr[1]/preceding-sibling::tr/td[contains(text(), 'Missed') or contains(text(), 'Scored')]/ancestor::tr[1]"
         )
         shootout_events = []
         for action in shootout_actions:
-            scored = " ".join(
-                (action.xpath(".//td[1]/text()").get() or "").split()
-            )
-            score = " ".join(
-                (action.xpath(".//td[2]/text()").get() or "").split()
-            )
-            team = " ".join(
-                (action.xpath(".//td[3]/text()").get() or "").split()
-            )
-            player = " ".join(
-                (action.xpath(".//td[4]/div[1]/text()").get() or "").split()
-            )
-            goalie = " ".join(
-                (action.xpath(".//td[4]/div[2]/text()").get() or "").split()
-            )
+            scored = clean(action.xpath(".//td[1]/text()").get())
+            score = clean(action.xpath(".//td[2]/text()").get())
+            team = clean(action.xpath(".//td[3]/text()").get())
+            player = clean(action.xpath(".//td[4]/div[1]/text()").get())
+            goalie = clean(action.xpath(".//td[4]/div[2]/text()").get())
             shootout_events.append([scored, score, team, player, goalie])
 
-        yield {
+        return {
             "swehockey_id": swehockey_id,
             "goalies_teams": goalies_teams,
             "goalies": goalies,
@@ -209,9 +224,16 @@ class StatsSpider(scrapy.Spider):
             "shootout_events": shootout_events,
         }
 
-    def parse_line_up(self, response, swehockey_id):
+    def parse_line_up(self, response, swehockey_id, game):
         # Parse the line up page to get data on
         # participating refs, coaches, and players.
+
+        # The names of the referees do not have a separator
+        # that separates the first name(s) from the last name(s).
+        # As such, it is impossible to programatically distinguish
+        # the first and last names without some sort of cross reference,
+        # since some have multiple last names and some have multiple
+        # first names.
         refs = response.xpath(
             "(//table[@class='tblContent'])[2]//tr[1]/td[2]/text()"
         ).get()
@@ -226,13 +248,13 @@ class StatsSpider(scrapy.Spider):
             "(//table[@class='tblContent'])[4]//tr[3]/td[2]/table/tr/td/text()"
         ).getall()
         home_team_coaches = [
-            clean_list(coach.split(",")) for coach in home_team_coaches
+            self.parse_player(coach) for coach in home_team_coaches
         ]
         away_team_coaches = response.xpath(
             "(//table[@class='tblContent'])[4]//tr[3]/following-sibling::tr[last()]//table/tr/td/text()"
         ).getall()
         away_team_coaches = [
-            clean_list(coach.split(",")) for coach in away_team_coaches
+            self.parse_player(coach) for coach in away_team_coaches
         ]
         line_up_home = self.get_line_up(
             response.xpath(
@@ -245,7 +267,7 @@ class StatsSpider(scrapy.Spider):
             )
         )
 
-        yield {
+        game["line_up"] = {
             "swehockey_id": swehockey_id,
             "refs": refs,
             "linesmen": linesmen,
@@ -254,6 +276,7 @@ class StatsSpider(scrapy.Spider):
             "line_up_home": line_up_home,
             "line_up_away": line_up_away,
         }
+        yield game
 
     def get_stats_by_period(self, game_info, tr, td, int_list=True):
         # Parse a common pattern describing basic stats by
@@ -263,17 +286,14 @@ class StatsSpider(scrapy.Spider):
         stat = re.sub("[()]", "", stat)
         if int_list is True:
             stat = stat.split(":")
-            return [int(x) for x in stat]
+            return [int(x) for x in stat if (not x.startswith("-"))]
         return stat
 
     def get_goalies(self, goalies_stats, td):
         goalies = goalies_stats.xpath(
             f"((//table[@class='tblContent'])[2]/tr/th/h3)[2]/ancestor::tr[1]/preceding-sibling::tr/td[{td}]"
         )
-        return [
-            " ".join((team.xpath(".//text()").get() or "").split())
-            for team in goalies
-        ]
+        return [clean(team.xpath(".//text()").get()) for team in goalies]
 
     def get_line_up(self, line_up_raw):
         # Parse the line up for one team.
@@ -346,6 +366,12 @@ class StatsSpider(scrapy.Spider):
             # Players on the ice on goal
             if details_1.startswith("Pos"):
                 # Penalty shot goals are handled below
+                # and stored as type "penalty_shot"
+                # with outcome "scored", instead of
+                # type "goal".
+
+                # TODO: refactor list comprehension for
+                # players on ice, since it's used four times.
                 if not event.endswith("(PS)"):
                     details["type"] = "goal"
                     details["on_ice_plus"] = [
@@ -356,7 +382,8 @@ class StatsSpider(scrapy.Spider):
                         int(x)
                         for x in clean_list(details_2.split(":")[1].split(","))
                     ]
-            # Penalty Shot
+            # Penalty Shot (the details and outcome of the penalty shot
+            # is in another event)
             if details_1.startswith("PenaltyShot"):
                 return "Penalty Shot"
             # Missed Penalty Shot
@@ -387,12 +414,15 @@ def clean(text=""):
     # Remove all extra whitespace in a string.
     # Return an empty string if no string
     # is passed as an argument.
+
+    # No need to do anything if it's not a string.
     if not isinstance(text, str):
         return text
     return " ".join((text or "").split())
 
 
 def clean_list(l=[]):
+    # Clean a list of strings
     return [clean(item) for item in l]
 
 
