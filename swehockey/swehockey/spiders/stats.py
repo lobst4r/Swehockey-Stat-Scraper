@@ -2,8 +2,8 @@ import scrapy
 import re
 import logging
 
-START_DATE = "2020-01-01"
-END_DATE = "2022-12-31"
+START_DATE = "2022-03-06"
+END_DATE = "2022-03-06"
 
 
 class StatsSpider(scrapy.Spider):
@@ -50,6 +50,8 @@ class StatsSpider(scrapy.Spider):
             yield response.follow(url=next_page_url, callback=self.parse)
 
     def parse_stats_summary(self, response, swehockey_id):
+        # Check if game has ended, in order to find abnormalities
+        # and avoid errors.
         game_ended_strings = [
             "Final Score",
             "Game Finished",
@@ -59,14 +61,13 @@ class StatsSpider(scrapy.Spider):
             response.xpath("//td[@class='tdInfoArea']/div[3]/text()").get()
         )
 
-        # Check if game has ended, in order to avoid errors
-        # and find abnormalities.
         if not any(txt in game_status for txt in game_ended_strings):
             logging.warning(
                 f"Game not finished or invalid. URL: https://stats.swehockey.se/Game/Events/{swehockey_id}\nStatus: '{game_status}'"
             )
             return
-
+        title = clean(response.xpath("//title/text()").get())
+        team_names_abbrev = clean_list((title.split("(", 1)[0]).split("-"))
         line_up_url = f"/Game/LineUps/{swehockey_id}"
         game_info = response.xpath("//table[@class='tblContent'][1]")
 
@@ -76,13 +77,23 @@ class StatsSpider(scrapy.Spider):
         date_time = clean(game_info.xpath("//tr[2]/td[1]/h3/text()").get())
         league = clean(game_info.xpath("//tr[2]/td[2]/h3/text()").get())
         arena = clean(game_info.xpath("//tr[2]/td[3]/h3/b/text()").get())
-
-        shots_team_1 = self.get_stats_by_period(game_info, 3, 3)
-        shots_team_2 = self.get_stats_by_period(game_info, 3, 7)
-        saves_team_1 = self.get_stats_by_period(game_info, 5, 3)
-        saves_team_2 = self.get_stats_by_period(game_info, 5, 6)
-        pim_team_1 = self.get_stats_by_period(game_info, 7, 3)
-        pim_team_2 = self.get_stats_by_period(game_info, 7, 7)
+        try: 
+            shots_total_team_1 = self.get_stats_total(game_info, 3, 2)
+            shots_total_team_2 = self.get_stats_total(game_info, 3, 6)
+            saves_total_team_1 = self.get_stats_total(game_info, 5, 2)
+            saves_total_team_2 = self.get_stats_total(game_info, 5, 5)
+            pim_total_team_1 = self.get_stats_total(game_info, 7, 2)
+            pim_total_team_2 = self.get_stats_total(game_info, 7, 6)
+        except:
+            logging.warning(
+                f"NONE TYPE. URL: https://stats.swehockey.se/Game/Events/{swehockey_id}\n{shots_total_team_1}, {shots_total_team_2}, {saves_total_team_1}, {saves_total_team_2}, {pim_total_team_1}, {pim_total_team_2}"
+            )
+        shots_by_period_team_1 = self.get_stats_by_period(game_info, 3, 3)
+        shots_by_period_team_2 = self.get_stats_by_period(game_info, 3, 7)
+        saves_by_period_team_1 = self.get_stats_by_period(game_info, 5, 3)
+        saves_by_period_team_2 = self.get_stats_by_period(game_info, 5, 6)
+        pim_by_period_team_1 = self.get_stats_by_period(game_info, 7, 3)
+        pim_by_period_team_2 = self.get_stats_by_period(game_info, 7, 7)
         pp_time_team_1 = self.get_stats_by_period(game_info, 8, 3, False)
         pp_time_team_2 = self.get_stats_by_period(game_info, 8, 6, False)
         pp_perc_team_1 = (
@@ -127,23 +138,24 @@ class StatsSpider(scrapy.Spider):
         game = {}
         game["swehockey_id"] = swehockey_id
         game["stats"] = {
+            "team_names_abbrev": team_names_abbrev,
             "team_1": teams[0],
             "team_2": teams[1],
             "date_time": date_time,
             "league": league,
             "arena": arena,
-            "shots_team_1": shots_team_1,
-            "shots_team_2": shots_team_2,
-            "shots_sum_team_1": sum(shots_team_1),
-            "shots_sum_team_2": sum(shots_team_2),
-            "saves_team_1": saves_team_1,
-            "saves_team_2": saves_team_2,
-            "saves_sum_team_1": sum(saves_team_1),
-            "saves_sum_team_2": sum(saves_team_2),
-            "pim_team_1": pim_team_1,
-            "pim_team_2": pim_team_2,
-            "pim_sum_team_1": sum(pim_team_1),
-            "pim_sum_team_2": sum(pim_team_2),
+            "shots_total_team_1": shots_total_team_1,
+            "shots_total_team_2": shots_total_team_2,
+            "saves_total_team_1": shots_total_team_1,
+            "saves_total_team_2": shots_total_team_2,
+            "pim_total_team_1": shots_total_team_1,
+            "pim_total_team_2": shots_total_team_2,
+            "shots_team_1": shots_by_period_team_1,
+            "shots_team_2": shots_by_period_team_2,
+            "saves_team_1": saves_by_period_team_1,
+            "saves_team_2": saves_by_period_team_2,
+            "pim_team_1": pim_by_period_team_1,
+            "pim_team_2": pim_by_period_team_2,
             "pp_time_team_1": pp_time_team_1,
             "pp_time_team_2": pp_time_team_2,
             "pp_perc_team_1": pp_perc_team_1,
@@ -295,6 +307,8 @@ class StatsSpider(scrapy.Spider):
             "line_up_away": line_up_away,
         }
         yield game
+    def get_stats_total(self, game_info, tr, td):
+        return int(clean(game_info.xpath(f"//tr[{tr}]/td[{td}]/strong/text()").get()))
 
     def get_stats_by_period(self, game_info, tr, td, int_list=True):
         # Parse a common pattern describing basic stats by
