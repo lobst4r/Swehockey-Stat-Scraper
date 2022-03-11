@@ -1,6 +1,10 @@
 import scrapy
+from swehockey.items import BasicStatsItem, EventItem, EventItemLoader
+from scrapy.loader import ItemLoader
+from itemloaders.processors import TakeFirst, MapCompose
 import re
 import logging
+
 
 START_DATE = "2022-03-06"
 END_DATE = "2022-03-06"
@@ -17,20 +21,31 @@ class StatsSpider(scrapy.Spider):
         for game in response.xpath(
             "//table[@class='tblContent']/tr/td/a[starts-with(@href, 'java')]"
         ):
-            game_link = game.xpath(".//@href").get()
+            # Create Loader object
+            l = ItemLoader(item=BasicStatsItem(), selector=game)
+            l.default_output_processor = TakeFirst()
 
-            # Extract only the URL from the href
-            url = game_link.split("'")[1]
-            swehockey_id = url.split("/")[3]
+            # Extract URLs and game ID.
+            game_link = game.xpath(".//@href").get()
+            event_url = game_link.split("'")[1]
+            swehockey_id = event_url.split("/")[3]
             line_up_url = f"/Game/LineUps/{swehockey_id}"
+
+            l.add_value("swehockey_id", swehockey_id)
+            l.add_value("event_url", response.urljoin(event_url))
+            l.add_value("line_up_url", response.urljoin(line_up_url))
 
             # Open Game Event link
             yield response.follow(
-                url=url,
+                url=event_url,
                 callback=self.parse_stats_summary,
-                cb_kwargs={"swehockey_id": swehockey_id},
+                cb_kwargs={
+                    "swehockey_id": swehockey_id,
+                    "item": l.load_item(),
+                },
             )
 
+        # Find and navigate to next page of games (i.e. next day's games).
         next_page_url = response.xpath(
             "//div[@class='form-group btn-group']/a[2]/@href"
         ).get()
@@ -45,11 +60,15 @@ class StatsSpider(scrapy.Spider):
                 .replace("-", "")
             )
         )
-
         if next_page_date < int(END_DATE.replace("-", "")):
             yield response.follow(url=next_page_url, callback=self.parse)
 
-    def parse_stats_summary(self, response, swehockey_id):
+    def parse_stats_summary(self, response, swehockey_id, item):
+        game_info = response.xpath("(//table[@class='tblContent'])[1]")
+        l = ItemLoader(item=item, selector=game_info)
+        l.default_output_processor = TakeFirst()
+        l.default_input_processor = MapCompose(clean)
+
         # Check if game has ended, in order to find abnormalities
         # and avoid errors.
         game_ended_strings = [
@@ -66,54 +85,38 @@ class StatsSpider(scrapy.Spider):
                 f"Game not finished or invalid. URL: https://stats.swehockey.se/Game/Events/{swehockey_id}\nStatus: '{game_status}'"
             )
             return
+
+        # Parse basic game stats
         title = clean(response.xpath("//title/text()").get())
         team_names_abbrev = clean_list((title.split("(", 1)[0]).split("-"))
-        line_up_url = f"/Game/LineUps/{swehockey_id}"
-        game_info = response.xpath("//table[@class='tblContent'][1]")
-
+        l.add_value("home_name_abbrev", team_names_abbrev[0])
+        l.add_value("away_name_abbrev", team_names_abbrev[1])
         teams = game_info.xpath("//tr/th/h2/text()").get()
         teams = clean_list([clean(team) for team in teams.split("-")])
-
-        date_time = clean(game_info.xpath("//tr[2]/td[1]/h3/text()").get())
-        league = clean(game_info.xpath("//tr[2]/td[2]/h3/text()").get())
-        arena = clean(game_info.xpath("//tr[2]/td[3]/h3/b/text()").get())
-        try: 
-            shots_total_team_1 = self.get_stats_total(game_info, 3, 2)
-            shots_total_team_2 = self.get_stats_total(game_info, 3, 6)
-            saves_total_team_1 = self.get_stats_total(game_info, 5, 2)
-            saves_total_team_2 = self.get_stats_total(game_info, 5, 5)
-            pim_total_team_1 = self.get_stats_total(game_info, 7, 2)
-            pim_total_team_2 = self.get_stats_total(game_info, 7, 6)
-        except:
-            logging.warning(
-                f"NONE TYPE. URL: https://stats.swehockey.se/Game/Events/{swehockey_id}\n{shots_total_team_1}, {shots_total_team_2}, {saves_total_team_1}, {saves_total_team_2}, {pim_total_team_1}, {pim_total_team_2}"
-            )
-        shots_by_period_team_1 = self.get_stats_by_period(game_info, 3, 3)
-        shots_by_period_team_2 = self.get_stats_by_period(game_info, 3, 7)
-        saves_by_period_team_1 = self.get_stats_by_period(game_info, 5, 3)
-        saves_by_period_team_2 = self.get_stats_by_period(game_info, 5, 6)
-        pim_by_period_team_1 = self.get_stats_by_period(game_info, 7, 3)
-        pim_by_period_team_2 = self.get_stats_by_period(game_info, 7, 7)
-        pp_time_team_1 = self.get_stats_by_period(game_info, 8, 3, False)
-        pp_time_team_2 = self.get_stats_by_period(game_info, 8, 6, False)
-        pp_perc_team_1 = (
-            game_info.xpath("//tr[8]/td[2]/strong/text()").get().strip()
-        )
+        l.add_xpath("date_time", ".//tr[2]/td[1]/h3/text()")
+        l.add_xpath("league", ".//tr[2]/td[2]/h3/text()")
+        l.add_xpath("arena", ".//tr[2]/td[3]/h3/b/text()")
         try:
-            pp_perc_team_1 = float(
-                pp_perc_team_1.replace(",", ".").replace("%", "")
-            )
+            l.add_xpath("shots_total_team_1", self.stats_total_xpath(3, 2))
+            l.add_xpath("shots_total_team_2", self.stats_total_xpath(3, 6))
+            l.add_xpath("saves_total_team_1", self.stats_total_xpath(5, 2))
+            l.add_xpath("saves_total_team_2", self.stats_total_xpath(5, 5))
+            l.add_xpath("pim_total_team_1", self.stats_total_xpath(7, 2))
+            l.add_xpath("pim_total_team_2", self.stats_total_xpath(7, 6))
         except:
-            pp_perc_team_1 = None
-        pp_perc_team_2 = (
-            game_info.xpath("//tr[8]/td[5]/strong/text()").get().strip()
-        )
-        try:
-            pp_perc_team_2 = float(
-                pp_perc_team_2.replace(",", ".").replace("%", "")
-            )
-        except:
-            pp_perc_team_2 = None
+            logging.warning(f"NONE TYPE. URL: {l.get_value('event_url')}")
+        l.add_xpath("shots_by_period_team_1", self.stats_by_period_xpath(3, 3))
+        l.add_xpath("shots_by_period_team_2", self.stats_by_period_xpath(3, 7))
+        l.add_xpath("saves_by_period_team_1", self.stats_by_period_xpath(5, 3))
+        l.add_xpath("saves_by_period_team_2", self.stats_by_period_xpath(5, 6))
+        l.add_xpath("pim_by_period_team_1", self.stats_by_period_xpath(7, 3))
+        l.add_xpath("pim_by_period_team_2", self.stats_by_period_xpath(7, 7))
+        l.add_xpath("pp_time_team_1", self.stats_by_period_xpath(8, 3))
+        l.add_xpath("pp_time_team_2", self.stats_by_period_xpath(8, 6))
+        l.add_xpath("pp_perc_team_1", ".//tr[8]/td[2]/strong/text()")
+        l.add_xpath("pp_perc_team_2", ".//tr[8]/td[5]/strong/text()")
+        l.add_xpath("spectators", ".//td[@class='tdInfoArea']/div[4]/text()")
+        l.add_xpath("score", "//td[@class='tdInfoArea']/div[2]/text()")
 
         spectators = clean(
             game_info.xpath("//td[@class='tdInfoArea']/div[4]/text()").get()
@@ -121,138 +124,101 @@ class StatsSpider(scrapy.Spider):
         if spectators:
             spectators = int(clean(spectators.split(":")[1]))
 
-        # Get score by period
-        score = (
-            game_info.xpath("//td[@class='tdInfoArea']/div[2]/text()")
-            .get()
-            .strip()
-        )
-        # Convert score to a 2D list of ints. Eg. [[1,0], [0,1], [3,0]]
-        score = [
-            [int(goal) for goal in goals.strip().split("-")]
-            for goals in re.sub("[()]", "", score).split(",")
-        ]
-        # Separate score by team
-        score_team_1 = [goals[0] for goals in score]
-        score_team_2 = [goals[1] for goals in score]
-        game = {}
-        game["swehockey_id"] = swehockey_id
-        game["stats"] = {
-            "team_names_abbrev": team_names_abbrev,
-            "team_1": teams[0],
-            "team_2": teams[1],
-            "date_time": date_time,
-            "league": league,
-            "arena": arena,
-            "shots_total_team_1": shots_total_team_1,
-            "shots_total_team_2": shots_total_team_2,
-            "saves_total_team_1": shots_total_team_1,
-            "saves_total_team_2": shots_total_team_2,
-            "pim_total_team_1": shots_total_team_1,
-            "pim_total_team_2": shots_total_team_2,
-            "shots_team_1": shots_by_period_team_1,
-            "shots_team_2": shots_by_period_team_2,
-            "saves_team_1": saves_by_period_team_1,
-            "saves_team_2": saves_by_period_team_2,
-            "pim_team_1": pim_by_period_team_1,
-            "pim_team_2": pim_by_period_team_2,
-            "pp_time_team_1": pp_time_team_1,
-            "pp_time_team_2": pp_time_team_2,
-            "pp_perc_team_1": pp_perc_team_1,
-            "pp_perc_team_2": pp_perc_team_2,
-            "score": score,
-            "score_team_1": score_team_1,
-            "score_team_2": score_team_2,
-            "spectators": spectators,
-        }
-        game["events"] = self.parse_game_actions(response, swehockey_id)
+        return self.parse_game_actions(response, swehockey_id, l.load_item())
+
+        # yield l.load_item()
         # Open Game Event link
-        yield response.follow(
-            url=line_up_url,
-            callback=self.parse_line_up,
-            cb_kwargs={"swehockey_id": swehockey_id, "game": game},
-        )
+        # yield response.follow(
+        #     url=line_up_url,
+        #     callback=self.parse_line_up,
+        #     cb_kwargs={"swehockey_id": swehockey_id, "game": game},
+        # )
 
-    def parse_game_actions(self, response, swehockey_id):
-        goalies_stats = response.xpath("(//table[@class='tblContent'])[2]")
-
-        goalies_teams = self.get_goalies(goalies_stats, 3)
-        goalies = [
-            self.parse_player(goalie)
-            for goalie in self.get_goalies(goalies_stats, 4)
-        ]
-        goalies_saves = self.get_goalies(goalies_stats, 5)
+    def parse_game_actions(self, response, swehockey_id, item):
+        events = response.xpath("(//table[@class='tblContent'])[2]")
+        l = ItemLoader(item=item, selector=events)
+        l.add_xpath("goalies_teams", self.get_goalies(3))
+        l.add_xpath("goalies_names", self.get_goalies(4))
+        l.add_xpath("goalies_saves", self.get_goalies(5))
 
         # Find the last period of the game (including overtime) and extract data from each period
-        actions = response.xpath(
-            "((//table[@class='tblContent'])[2]//tr/th/h3[contains(text(), 'Overtime') or contains(text(), 'overtime') or contains(text(), '3rd period')])[1]/ancestor::node()/following-sibling::tr[not(.//th)]"
+        actions = events.xpath(
+            "(.//tr/th/h3[contains(text(), 'Overtime') or contains(text(), 'overtime') or contains(text(), '3rd period')])[1]/ancestor::node()/following-sibling::tr[not(.//th)]"
         )
-        game_events = []
+        # game_events = []
         for action in actions:
-            time = (action.xpath(".//td[1]/text()").get() or "").strip()
-            event = (action.xpath(".//td[2]/text()").get() or "").strip()
-            team = (action.xpath(".//td[3]/text()").get() or "").strip()
-            player = self.parse_player(action.xpath(".//td[4]/text()").get())
+            el = EventItemLoader(item=EventItem(), selector=action)
+            el.add_xpath("time", ".//td[1]/text()")
+            el.add_xpath("event", ".//td[2]/text()")
+            el.add_xpath("team", ".//td[3]/text()")
+            el.add_xpath("player", ".//td[4]/text()")
+            el.add_xpath("assist_1", ".//td[4]/span[2]/div/text()")
+            el.add_xpath("assist_2", ".//td[4]/span[3]/div/text()")
+            el.add_xpath("details_1", ".//td[5]/descendant-or-self::text()[1]")
+            el.add_xpath("details_1", ".//td[5]/descendant-or-self::text()[2]")
+            # time = (action.xpath(".//td[1]/text()").get() or "").strip()
+            # event = (action.xpath(".//td[2]/text()").get() or "").strip()
+            # team = (action.xpath(".//td[3]/text()").get() or "").strip()
+            # player = self.parse_player(action.xpath(".//td[4]/text()").get())
+
             # If the player variable is a list of length 1 or less,
             # it's not a player name, and therefore we convert it to
             # a string instead, as it indicates a team event (or
             # potentially something else).
-            if len(player) == 1:
-                player = player[0]
-            elif len(player) == 0:
-                player = ""
+            # if len(player) == 1:
+            #     player = player[0]
+            # elif len(player) == 0:
+            #     player = ""
+            # assist_1 = self.parse_player(
+            # action.xpath(".//td[4]/span[2]/div/text()").get()
+            # )
+            # assist_2 = self.parse_player(
+            #     action.xpath(".//td[4]/span[3]/div/text()").get()
+            # )
+            # details_2 = clean(
+            #     action.xpath(".//td[5]/descendant-or-self::text()[2]").get()
+            # )
+            # details = self.parse_event_detail(
+            #     details_1, details_2, player, event
+            # )
+            l.add_value("game_events", el.load_item())
+        return l.load_item()
+        #     game_events.append(
+        #         [
+        #             time,
+        #             event,
+        #             team,
+        #             player,
+        #             assist_1,
+        #             assist_2,
+        #             details_1,
+        #             details_2,
+        #             details,
+        #         ]
+        #     )k
 
-            assist_1 = self.parse_player(
-                action.xpath(".//td[4]/span[2]/div/text()").get()
-            )
-            assist_2 = self.parse_player(
-                action.xpath(".//td[4]/span[3]/div/text()").get()
-            )
-            details_1 = clean(
-                action.xpath(".//td[5]/descendant-or-self::text()").get()
-            )
-            details_2 = clean(
-                action.xpath(".//td[5]/descendant-or-self::text()[2]").get()
-            )
-            details = self.parse_event_detail(
-                details_1, details_2, player, event
-            )
-            game_events.append(
-                [
-                    time,
-                    event,
-                    team,
-                    player,
-                    assist_1,
-                    assist_2,
-                    details_1,
-                    details_2,
-                    details,
-                ]
-            )
+        # # Get shootout data (if any)
+        # # TODO: Clean shootout data
+        # shootout_actions = response.xpath(
+        #     "((//table[@class='tblContent'])[2]/tr/th/h3[contains(text(), 'Game Winning Shots')])[1]/ancestor::tr[1]/following-sibling::tr/th/ancestor::tr[1]/preceding-sibling::tr/td[contains(text(), 'Missed') or contains(text(), 'Scored')]/ancestor::tr[1]"
+        # )
+        # shootout_events = []
+        # for action in shootout_actions:
+        #     scored = clean(action.xpath(".//td[1]/text()").get())
+        #     score = clean(action.xpath(".//td[2]/text()").get())
+        #     team = clean(action.xpath(".//td[3]/text()").get())
+        #     player = clean(action.xpath(".//td[4]/div[1]/text()").get())
+        #     goalie = clean(action.xpath(".//td[4]/div[2]/text()").get())
+        #     shootout_events.append([scored, score, team, player, goalie])
 
-        # Get shootout data (if any)
-        # TODO: Clean shootout data
-        shootout_actions = response.xpath(
-            "((//table[@class='tblContent'])[2]/tr/th/h3[contains(text(), 'Game Winning Shots')])[1]/ancestor::tr[1]/following-sibling::tr/th/ancestor::tr[1]/preceding-sibling::tr/td[contains(text(), 'Missed') or contains(text(), 'Scored')]/ancestor::tr[1]"
-        )
-        shootout_events = []
-        for action in shootout_actions:
-            scored = clean(action.xpath(".//td[1]/text()").get())
-            score = clean(action.xpath(".//td[2]/text()").get())
-            team = clean(action.xpath(".//td[3]/text()").get())
-            player = clean(action.xpath(".//td[4]/div[1]/text()").get())
-            goalie = clean(action.xpath(".//td[4]/div[2]/text()").get())
-            shootout_events.append([scored, score, team, player, goalie])
-
-        return {
-            "swehockey_id": swehockey_id,
-            "goalies_teams": goalies_teams,
-            "goalies": goalies,
-            "goalies_saves": goalies_saves,
-            "game_events": game_events,
-            "shootout_events": shootout_events,
-        }
+        # return {
+        #     "swehockey_id": swehockey_id,
+        #     "goalies_teams": goalies_teams,
+        #     "goalies": goalies,
+        #     "goalies_saves": goalies_saves,
+        #     "game_events": game_events,
+        #     "shootout_events": shootout_events,
+        # }
 
     def parse_line_up(self, response, swehockey_id, game):
         # Parse the line up page to get data on
@@ -307,25 +273,16 @@ class StatsSpider(scrapy.Spider):
             "line_up_away": line_up_away,
         }
         yield game
-    def get_stats_total(self, game_info, tr, td):
-        return int(clean(game_info.xpath(f"//tr[{tr}]/td[{td}]/strong/text()").get()))
 
-    def get_stats_by_period(self, game_info, tr, td, int_list=True):
-        # Parse a common pattern describing basic stats by
-        # period.
-        # Convert to list of ints if int_list is true (default).
-        stat = game_info.xpath(f"//tr[{tr}]/td[{td}]/text()").get().strip()
-        stat = re.sub("[()]", "", stat)
-        if int_list is True:
-            stat = stat.split(":")
-            return [int(x) for x in stat if (not x.startswith("-"))]
-        return stat
+    def stats_total_xpath(self, tr, td):
+        return f".//tr[{tr}]/td[{td}]/strong/text()"
 
-    def get_goalies(self, goalies_stats, td):
-        goalies = goalies_stats.xpath(
-            f"((//table[@class='tblContent'])[2]/tr/th/h3)[2]/ancestor::tr[1]/preceding-sibling::tr/td[{td}]"
-        )
-        return [clean(team.xpath(".//text()").get()) for team in goalies]
+    def stats_by_period_xpath(self, tr, td):
+        return f".//tr[{tr}]/td[{td}]/text()"
+
+    def get_goalies(self, td):
+        return f"(.//tr/th/h3)[2]/ancestor::tr[1]/preceding-sibling::tr/td[{td}]/text()"
+        # return [clean(team.xpath(".//text()").get()) for team in goalies]
 
     def get_line_up(self, line_up_raw):
         # Parse the line up for one team.
