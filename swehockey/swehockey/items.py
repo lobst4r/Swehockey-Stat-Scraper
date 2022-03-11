@@ -57,10 +57,54 @@ def parse_player(name=""):
     #     player[0] = int(player[0])
     return [player]
 
+def clean_list(l=[]):
+    # Clean a list of strings
+    return [clean(item) for item in l]
 
-def return_empty(value):
-    return value or [""]
+def parse_event_detail(event):
+    # The details column in the game events table can
+    # differ depending on the event. As such,
+    # it needs to be parsed based on that specific event.
 
+    # Penalty
+    details = {}
+    if event:
+        if event[0] == "(":
+            details["type"] = "penalty"
+            penalty_times = clean_list(
+                remove_parens(event).split("-")
+            )
+            details["penalty_start_time"] = penalty_times[0]
+            details["penalty_end_time"] = penalty_times[1]
+
+            # Players on the ice on goal
+        elif event.startswith("Pos"):
+            details["type"] = "goal"
+            details["on_ice_plus"] = [
+                int(x)
+                for x in clean_list(event.split(":")[1].split(","))
+                if x
+            ]
+        elif event.startswith("Neg"):
+            details["on_ice_minus"] = [
+                int(x)
+                for x in clean_list(event.split(":")[1].split(","))
+                if x
+            ]
+
+        # Missed Penalty Shot
+        elif event.startswith("Saved"):
+            details["type"] = "penalty_shot"
+            details["outcome"] = "missed"
+            details["goalie_number"] = clean_list(
+                parse_player(event.replace("Saved By ", ""))
+            )[0]
+        # Other details
+        else:
+            details['type'] = 'note'
+            details['note'] = event
+
+    return details
 
 class BasicStatsItem(scrapy.Item):
     # define the fields for your item here like:
@@ -156,8 +200,8 @@ class EventItem(scrapy.Item):
         input_processor=MapCompose(clean, parse_player),
     )
 
-    details_1 = scrapy.Field()
-    details_2 = scrapy.Field()
+    details_1 = scrapy.Field(input_processor=MapCompose(clean, parse_event_detail))
+    details_2 = scrapy.Field(input_processor=MapCompose(clean, parse_event_detail))
 
 class EventItemLoader(ItemLoader):
 

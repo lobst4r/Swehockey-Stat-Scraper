@@ -155,47 +155,9 @@ class StatsSpider(scrapy.Spider):
             el.add_xpath("assist_1", ".//td[4]/span[2]/div/text()")
             el.add_xpath("assist_2", ".//td[4]/span[3]/div/text()")
             el.add_xpath("details_1", ".//td[5]/descendant-or-self::text()[1]")
-            el.add_xpath("details_1", ".//td[5]/descendant-or-self::text()[2]")
-            # time = (action.xpath(".//td[1]/text()").get() or "").strip()
-            # event = (action.xpath(".//td[2]/text()").get() or "").strip()
-            # team = (action.xpath(".//td[3]/text()").get() or "").strip()
-            # player = self.parse_player(action.xpath(".//td[4]/text()").get())
-
-            # If the player variable is a list of length 1 or less,
-            # it's not a player name, and therefore we convert it to
-            # a string instead, as it indicates a team event (or
-            # potentially something else).
-            # if len(player) == 1:
-            #     player = player[0]
-            # elif len(player) == 0:
-            #     player = ""
-            # assist_1 = self.parse_player(
-            # action.xpath(".//td[4]/span[2]/div/text()").get()
-            # )
-            # assist_2 = self.parse_player(
-            #     action.xpath(".//td[4]/span[3]/div/text()").get()
-            # )
-            # details_2 = clean(
-            #     action.xpath(".//td[5]/descendant-or-self::text()[2]").get()
-            # )
-            # details = self.parse_event_detail(
-            #     details_1, details_2, player, event
-            # )
+            el.add_xpath("details_2", ".//td[5]/descendant-or-self::text()[2]")
             l.add_value("game_events", el.load_item())
         return l.load_item()
-        #     game_events.append(
-        #         [
-        #             time,
-        #             event,
-        #             team,
-        #             player,
-        #             assist_1,
-        #             assist_2,
-        #             details_1,
-        #             details_2,
-        #             details,
-        #         ]
-        #     )k
 
         # # Get shootout data (if any)
         # # TODO: Clean shootout data
