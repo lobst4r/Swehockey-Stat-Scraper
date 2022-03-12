@@ -93,6 +93,7 @@ def parse_event_detail(event):
                 if x
             ]
         elif event.startswith("Neg"):
+            details["type"] = "goal"
             details["on_ice_minus"] = [
                 int(x)
                 for x in clean_list(event.split(":")[1].split(","))

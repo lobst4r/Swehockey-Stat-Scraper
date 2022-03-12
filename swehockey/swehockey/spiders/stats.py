@@ -15,8 +15,8 @@ import re
 import logging
 
 
-START_DATE = "2022-03-06"
-END_DATE = "2022-03-06"
+START_DATE = "2010-01-01"
+END_DATE = "2014-12-31"
 
 
 class StatsSpider(scrapy.Spider):
@@ -98,9 +98,9 @@ class StatsSpider(scrapy.Spider):
 
         # Parse basic game stats
         title = clean(response.xpath("//title/text()").get())
-        team_names_abbrev = clean_list((title.split("(", 1)[0]).split("-"))
-        l.add_value("home_name_abbrev", team_names_abbrev[0])
-        l.add_value("away_name_abbrev", team_names_abbrev[1])
+        team_names_abbrev = clean_list(title.split("-", 1))
+        l.add_value("home_name_abbrev", clean_list(team_names_abbrev[0].split("(",1))[0])
+        l.add_value("away_name_abbrev", clean_list(team_names_abbrev[1].split("(",1))[0])
         teams = game_info.xpath("//tr/th/h2/text()").get()
         teams = clean_list([clean(team) for team in teams.split("-")])
         l.add_value("home_name", teams[0])
@@ -137,9 +137,8 @@ class StatsSpider(scrapy.Spider):
         if spectators:
             spectators = int(clean(spectators.split(":")[1]))
 
-        # return self.parse_game_actions(response, swehockey_id, l.load_item())
+        self.parse_game_actions(response, swehockey_id, l.load_item())
 
-        # yield l.load_item()
         # Open Game Event link
         yield response.follow(
             url=line_up_url,
@@ -174,14 +173,17 @@ class StatsSpider(scrapy.Spider):
         shootout_actions = response.xpath(
             "((//table[@class='tblContent'])[2]/tr/th/h3[contains(text(), 'Game Winning Shots')])[1]/ancestor::tr[1]/following-sibling::tr/th/ancestor::tr[1]/preceding-sibling::tr/td[contains(text(), 'Missed') or contains(text(), 'Scored')]/ancestor::tr[1]"
         )
-        for action in shootout_actions:
-            sl = EventItemLoader(item=ShootoutItem(), selector=action)
-            sl.add_xpath("scored", ".//td[1]/text()")
-            sl.add_xpath("score", ".//td[2]/text()")
-            sl.add_xpath("team", ".//td[3]/text()")
-            sl.add_xpath("player", ".//td[4]//div[1]/text()")
-            sl.add_xpath("goalie", ".//td[4]//div[2]/text()")
-            l.add_value("shootout_events", sl.load_item())
+        if shootout_actions:
+            for action in shootout_actions:
+                sl = EventItemLoader(item=ShootoutItem(), selector=action)
+                sl.add_xpath("scored", ".//td[1]/text()")
+                sl.add_xpath("score", ".//td[2]/text()")
+                sl.add_xpath("team", ".//td[3]/text()")
+                sl.add_xpath("player", ".//td[4]//div[1]/text()")
+                sl.add_xpath("goalie", ".//td[4]//div[2]/text()")
+                l.add_value("shootout_events", sl.load_item())
+        else:
+            l.add_value("shootout_events", "") # Create an empty field even if there is no shootout
         return l.load_item()
 
     def parse_line_up(self, response, swehockey_id, item):
@@ -206,7 +208,7 @@ class StatsSpider(scrapy.Spider):
         self.get_lines(lineup_selector, "((//table[@class='tblContent'])[4]//tr/th[contains(@class, 'tdSubTitle')])[2]/ancestor::tr[1]/following-sibling::tr/td[contains(@style, 'text-align')]/ancestor::tr[1]", ll.load_item(), 'lineup_away')
 
         l.add_value('lineup', ll.load_item())
-        return l.load_item()
+        yield l.load_item()
 
 
     def stats_total_xpath(self, tr, td):
