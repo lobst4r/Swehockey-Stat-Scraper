@@ -184,6 +184,7 @@ class BasicStatsItem(scrapy.Item):
     )
 
     game_events = scrapy.Field(output_processor=Identity())
+    shootout_events = scrapy.Field(output_processor=Identity())
 
 
 class EventItem(scrapy.Item):
@@ -202,6 +203,13 @@ class EventItem(scrapy.Item):
 
     details_1 = scrapy.Field(input_processor=MapCompose(clean, parse_event_detail))
     details_2 = scrapy.Field(input_processor=MapCompose(clean, parse_event_detail))
+
+class ShootoutItem(scrapy.Item):
+    scored = scrapy.Field()
+    score = scrapy.Field()
+    team = scrapy.Field()
+    player = scrapy.Field(input_processor=MapCompose(clean, parse_player))
+    goalie = scrapy.Field(input_processor=MapCompose(clean, (lambda text: text.replace("vs. goalie ", "")), parse_player))
 
 class EventItemLoader(ItemLoader):
 

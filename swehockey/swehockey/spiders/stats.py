@@ -1,5 +1,10 @@
 import scrapy
-from swehockey.items import BasicStatsItem, EventItem, EventItemLoader
+from swehockey.items import (
+    BasicStatsItem,
+    EventItem,
+    ShootoutItem,
+    EventItemLoader,
+)
 from scrapy.loader import ItemLoader
 from itemloaders.processors import TakeFirst, MapCompose
 import re
@@ -145,7 +150,6 @@ class StatsSpider(scrapy.Spider):
         actions = events.xpath(
             "(.//tr/th/h3[contains(text(), 'Overtime') or contains(text(), 'overtime') or contains(text(), '3rd period')])[1]/ancestor::node()/following-sibling::tr[not(.//th)]"
         )
-        # game_events = []
         for action in actions:
             el = EventItemLoader(item=EventItem(), selector=action)
             el.add_xpath("time", ".//td[1]/text()")
@@ -157,30 +161,20 @@ class StatsSpider(scrapy.Spider):
             el.add_xpath("details_1", ".//td[5]/descendant-or-self::text()[1]")
             el.add_xpath("details_2", ".//td[5]/descendant-or-self::text()[2]")
             l.add_value("game_events", el.load_item())
+
+        # Get shootout data (if any)
+        shootout_actions = response.xpath(
+            "((//table[@class='tblContent'])[2]/tr/th/h3[contains(text(), 'Game Winning Shots')])[1]/ancestor::tr[1]/following-sibling::tr/th/ancestor::tr[1]/preceding-sibling::tr/td[contains(text(), 'Missed') or contains(text(), 'Scored')]/ancestor::tr[1]"
+        )
+        for action in shootout_actions:
+            sl = EventItemLoader(item=ShootoutItem(), selector=action)
+            sl.add_xpath("scored", ".//td[1]/text()")
+            sl.add_xpath("score", ".//td[2]/text()")
+            sl.add_xpath("team", ".//td[3]/text()")
+            sl.add_xpath("player", ".//td[4]//div[1]/text()")
+            sl.add_xpath("goalie", ".//td[4]//div[2]/text()")
+            l.add_value("shootout_events", sl.load_item())
         return l.load_item()
-
-        # # Get shootout data (if any)
-        # # TODO: Clean shootout data
-        # shootout_actions = response.xpath(
-        #     "((//table[@class='tblContent'])[2]/tr/th/h3[contains(text(), 'Game Winning Shots')])[1]/ancestor::tr[1]/following-sibling::tr/th/ancestor::tr[1]/preceding-sibling::tr/td[contains(text(), 'Missed') or contains(text(), 'Scored')]/ancestor::tr[1]"
-        # )
-        # shootout_events = []
-        # for action in shootout_actions:
-        #     scored = clean(action.xpath(".//td[1]/text()").get())
-        #     score = clean(action.xpath(".//td[2]/text()").get())
-        #     team = clean(action.xpath(".//td[3]/text()").get())
-        #     player = clean(action.xpath(".//td[4]/div[1]/text()").get())
-        #     goalie = clean(action.xpath(".//td[4]/div[2]/text()").get())
-        #     shootout_events.append([scored, score, team, player, goalie])
-
-        # return {
-        #     "swehockey_id": swehockey_id,
-        #     "goalies_teams": goalies_teams,
-        #     "goalies": goalies,
-        #     "goalies_saves": goalies_saves,
-        #     "game_events": game_events,
-        #     "shootout_events": shootout_events,
-        # }
 
     def parse_line_up(self, response, swehockey_id, game):
         # Parse the line up page to get data on
