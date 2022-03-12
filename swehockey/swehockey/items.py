@@ -24,6 +24,9 @@ def clean(text=""):
         return text
     return " ".join((text or "").split())
 
+def clean_list(l=[]):
+    # Clean a list of strings
+    return [clean(item) for item in l]
 
 def process_by_period(text):
     # Parse a common pattern describing basic stats by
@@ -33,17 +36,24 @@ def process_by_period(text):
     return [x for x in stats if (not x.startswith("-"))]
 
 
-def process_score(score):
+def process_score_by_period(score):
     # Convert score to a 2D list of ints. Eg. [[1,0], [0,1], [3,0]]
     return [[goals.strip().split("-")] for goals in score.split(",")]
 
+def process_score(score):
+    return clean_list(score.split("-"))
 
 def process_pp_perc(text):
     return text.replace(",", ".").replace("%", "")
 
+def process_spectators(text):
+    return clean(text.split(":")[1])
 
 def remove_parens(text):
     return re.sub("[()]", "", text)
+
+def separate_names(text):
+    return text.split(",")
 
 
 def parse_player(name=""):
@@ -52,14 +62,11 @@ def parse_player(name=""):
     # with the format [NUM(optional), LAST_NAME, FIRST_NAME]
     if not name:
         return []
-    player = name.replace(".", ",").split(",")
+    player = clean_list(name.replace(".", ",").split(","))
     # if len(player) == 3:
     #     player[0] = int(player[0])
-    return [player]
+    return [ player ]
 
-def clean_list(l=[]):
-    # Clean a list of strings
-    return [clean(item) for item in l]
 
 def parse_event_detail(event):
     # The details column in the game events table can
@@ -113,6 +120,8 @@ class BasicStatsItem(scrapy.Item):
     event_url = scrapy.Field()
     home_name_abbrev = scrapy.Field()
     away_name_abbrev = scrapy.Field()
+    home_name = scrapy.Field()
+    away_name = scrapy.Field()
     date_time = scrapy.Field(
         input_processor=MapCompose(clean, str.split),
         output_processor=Identity(),
@@ -162,13 +171,12 @@ class BasicStatsItem(scrapy.Item):
     pp_perc_team_2 = scrapy.Field(
         input_processor=MapCompose(process_pp_perc, clean)
     )
-    score = scrapy.Field(
-        input_processor=MapCompose(remove_parens, process_score, clean),
+    score_by_period = scrapy.Field(
+        input_processor=MapCompose(remove_parens, process_score_by_period, clean),
         output_processor=Identity(),
     )
-    score_team_1 = scrapy.Field()
-    score_team_2 = scrapy.Field()
-    spectators = scrapy.Field()
+    score = scrapy.Field(input_processor=MapCompose(clean, process_score), output_processor=Identity())
+    spectators = scrapy.Field(input_processor=MapCompose(clean, process_spectators))
 
     # Events
     goalies_teams = scrapy.Field(
@@ -185,6 +193,7 @@ class BasicStatsItem(scrapy.Item):
 
     game_events = scrapy.Field(output_processor=Identity())
     shootout_events = scrapy.Field(output_processor=Identity())
+    lineup = scrapy.Field(output_processor=Identity())
 
 
 class EventItem(scrapy.Item):
@@ -210,6 +219,22 @@ class ShootoutItem(scrapy.Item):
     team = scrapy.Field()
     player = scrapy.Field(input_processor=MapCompose(clean, parse_player))
     goalie = scrapy.Field(input_processor=MapCompose(clean, (lambda text: text.replace("vs. goalie ", "")), parse_player))
+
+class LineupItem(scrapy.Item):
+    refs = scrapy.Field(input_processor=MapCompose(separate_names, clean), output_processor=Identity())
+    linesmen = scrapy.Field(input_processor=MapCompose(separate_names, clean), output_processor=Identity())
+    home_team_coaches = scrapy.Field(output_processor=Identity())
+    away_team_coaches = scrapy.Field(output_processor=Identity())
+    lineup_home = scrapy.Field(output_processor=Identity())
+    lineup_away = scrapy.Field(output_processor=Identity())
+    starting_players_lineup_home = scrapy.Field(input_processor=MapCompose(clean, parse_player), output_processor=Identity())
+    starting_players_lineup_away = scrapy.Field(input_processor=MapCompose(clean, parse_player), output_processor=Identity())
+
+class LineItem(scrapy.Item):
+    line_name = scrapy.Field()
+    players = scrapy.Field(input_processor=MapCompose(clean, parse_player), output_processor=Identity())
+    # line_row_1 = scrapy.Field()
+    # line_row_2 = scrapy.Field()
 
 class EventItemLoader(ItemLoader):
 
