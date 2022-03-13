@@ -15,8 +15,8 @@ import re
 import logging
 
 
-START_DATE = "2010-01-01"
-END_DATE = "2014-12-31"
+START_DATE = "2022-03-01"
+END_DATE = "2022-03-07"
 
 
 class StatsSpider(scrapy.Spider):
@@ -108,15 +108,12 @@ class StatsSpider(scrapy.Spider):
         l.add_xpath("date_time", ".//tr[2]/td[1]/h3/text()")
         l.add_xpath("league", ".//tr[2]/td[2]/h3/text()")
         l.add_xpath("arena", ".//tr[2]/td[3]/h3/b/text()")
-        try:
-            l.add_xpath("shots_total_team_1", self.stats_total_xpath(3, 2))
-            l.add_xpath("shots_total_team_2", self.stats_total_xpath(3, 6))
-            l.add_xpath("saves_total_team_1", self.stats_total_xpath(5, 2))
-            l.add_xpath("saves_total_team_2", self.stats_total_xpath(5, 5))
-            l.add_xpath("pim_total_team_1", self.stats_total_xpath(7, 2))
-            l.add_xpath("pim_total_team_2", self.stats_total_xpath(7, 6))
-        except:
-            logging.warning(f"NONE TYPE. URL: {l.get_value('event_url')}")
+        l.add_xpath("shots_total_team_1", self.stats_total_xpath(3, 2))
+        l.add_xpath("shots_total_team_2", self.stats_total_xpath(3, 6))
+        l.add_xpath("saves_total_team_1", self.stats_total_xpath(5, 2))
+        l.add_xpath("saves_total_team_2", self.stats_total_xpath(5, 5))
+        l.add_xpath("pim_total_team_1", self.stats_total_xpath(7, 2))
+        l.add_xpath("pim_total_team_2", self.stats_total_xpath(7, 6))
         l.add_xpath("shots_by_period_team_1", self.stats_by_period_xpath(3, 3))
         l.add_xpath("shots_by_period_team_2", self.stats_by_period_xpath(3, 7))
         l.add_xpath("saves_by_period_team_1", self.stats_by_period_xpath(5, 3))
@@ -130,12 +127,6 @@ class StatsSpider(scrapy.Spider):
         l.add_xpath("spectators", ".//td[@class='tdInfoArea']/div[4]/text()")
         l.add_xpath("score", "//td[@class='tdInfoArea']/div[1]/text()")
         l.add_xpath("score_by_period", "//td[@class='tdInfoArea']/div[2]/text()")
-
-        spectators = clean(
-            game_info.xpath("//td[@class='tdInfoArea']/div[4]/text()").get()
-        )
-        if spectators:
-            spectators = int(clean(spectators.split(":")[1]))
 
         self.parse_game_actions(response, swehockey_id, l.load_item())
 
@@ -157,16 +148,16 @@ class StatsSpider(scrapy.Spider):
         actions = events.xpath(
             "(.//tr/th/h3[contains(text(), 'Overtime') or contains(text(), 'overtime') or contains(text(), '3rd period')])[1]/ancestor::node()/following-sibling::tr[not(.//th)]"
         )
+        if not actions:
+            logging.warning(f"No game events found. Possible irregularity in html. URL: https://stats.swehockey.se/Game/Events/{swehockey_id}")
         for action in actions:
             el = EventItemLoader(item=EventItem(), selector=action)
             el.add_xpath("time", ".//td[1]/text()")
             el.add_xpath("event", ".//td[2]/text()")
             el.add_xpath("team", ".//td[3]/text()")
             el.add_xpath("player", ".//td[4]/text()")
-            #el.add_xpath("assist_1", ".//td[4]/span[2]/div/text()")
             el.add_xpath("assist_1", ".//td[4]/descendant-or-self::div[1]/text()")
             el.add_xpath("assist_2", ".//td[4]/descendant-or-self::div[2]/text()")
-            #el.add_xpath("assist_2", ".//td[4]/span[3]/div/text()")
             el.add_xpath("details_1", ".//td[5]/descendant-or-self::text()[1]")
             el.add_xpath("details_2", ".//td[5]/descendant-or-self::text()[2]")
             l.add_value("game_events", el.load_item())
@@ -206,8 +197,8 @@ class StatsSpider(scrapy.Spider):
         ll.add_xpath('home_team_coaches', "(.//table[@class='tblContent'])[2]//tr[3]/td[2]/table/tr/td/text()")
         ll.add_xpath('away_team_coaches', "(.//table[@class='tblContent'])[2]//tr[3]/following-sibling::tr[last()]//table/tr/td/text()")
 
-        self.get_lines(lineup_selector, "((//table[@class='tblContent'])[4]//tr/th[contains(@class, 'tdSubTitle')])[2]/ancestor::tr[1]/preceding-sibling::tr/descendant::*[contains(@style, 'text-align')]/ancestor::tr[1]", ll.load_item(), 'lineup_home')
-        self.get_lines(lineup_selector, "((//table[@class='tblContent'])[4]//tr/th[contains(@class, 'tdSubTitle')])[2]/ancestor::tr[1]/following-sibling::tr/td[contains(@style, 'text-align')]/ancestor::tr[1]", ll.load_item(), 'lineup_away')
+        self.get_lines(lineup_selector, "((//table[@class='tblContent'])[4]//tr/th[contains(@class, 'tdSubTitle')])[2]/ancestor::tr[1]/preceding-sibling::tr/descendant::*[contains(@style, 'text-align')]/ancestor::tr[1]", ll.load_item(), 'lineup_home', swehockey_id)
+        self.get_lines(lineup_selector, "((//table[@class='tblContent'])[4]//tr/th[contains(@class, 'tdSubTitle')])[2]/ancestor::tr[1]/following-sibling::tr/td[contains(@style, 'text-align')]/ancestor::tr[1]", ll.load_item(), 'lineup_away', swehockey_id)
 
         l.add_value('lineup', ll.load_item())
         yield l.load_item()
@@ -223,11 +214,12 @@ class StatsSpider(scrapy.Spider):
         return f"(.//tr/th/h3)[2]/ancestor::tr[1]/preceding-sibling::tr/td[{td}]/text()"
         # return [clean(team.xpath(".//text()").get()) for team in goalies]
 
-    def get_lines(self, response, line_up_raw, item, line_name):
+    def get_lines(self, response, line_up_raw, item, line_name, swehockey_id):
         # Parse the line up for one team.
         line_up_selector = response.xpath(line_up_raw)
         ll = EventItemLoader(item=item, selector=line_up_selector)
-        prev_line_name = ""
+        if not line_up_selector:
+            logging.warning(f"No Line Up found. Possible HTML irregularity. URL: https://stats.swehockey.se/Game/Events/{swehockey_id}")
         for line in line_up_selector:
             line_loader = EventItemLoader(item=LineItem(), selector=line)
 
