@@ -21,6 +21,7 @@ class SwehockeyPipeline:
         self.create_goalie_stats_table()
         self.create_plus_minus_table()
         self.create_game_events_table()
+        self.create_shootouts_table()
 
     def create_goalie_stats_table(self):
         self.cur.execute(
@@ -72,7 +73,9 @@ class SwehockeyPipeline:
     def create_games_table(self):
         self.cur.execute(
             """CREATE TABLE games(
-            swehockey_id INT PRIMARY KEY,
+            id INTEGER PRIMARY KEY,
+            swehockey_id INT UNIQUE,
+            date TEXT,
             arena TEXT,
             home_name TEXT,
             home_name_abbrev TEXT,
@@ -81,17 +84,17 @@ class SwehockeyPipeline:
             event_url TEXT,
             league TEXT,
             line_up_url TEXT,
-            pim_total_team_1 INT,
-            pim_total_team_2 INT,
-            pp_perc_team_1 FLOAT,
-            pp_perc_team_2 FLOAT,
+            pim_total_team_1 INTEGER,
+            pim_total_team_2 INTEGER,
+            pp_perc_team_1 REAL,
+            pp_perc_team_2 REAL,
             pp_time_team_1 TEXT,
             pp_time_team_2 TEXT,
-            saves_total_team_1 INT,
-            saves_total_team_2 INT,
-            shots_total_team_1 INT,
-            shots_total_team_2 INT,
-            spectators INT
+            saves_total_team_1 INTEGER,
+            saves_total_team_2 INTEGER,
+            shots_total_team_1 INTEGER,
+            shots_total_team_2 INTEGER,
+            spectators INTEGER
         )"""
         )
 
@@ -204,8 +207,8 @@ class SwehockeyPipeline:
             self.cur.execute(sql, list(stats.values()))
 
     def insert_game_events(self, item, swehockey_id):
-        events = {"swehockey_id": swehockey_id}
         for event in item["game_events"]:
+            events = {"swehockey_id": swehockey_id}
             player = event["player"]
             assist_1 = event["assist_1"]
             assist_2 = event["assist_2"]
@@ -235,18 +238,34 @@ class SwehockeyPipeline:
                     events["penalty_start_time"] = d2["penalty_start_time"]
                     events["penalty_end_time"] = d2["penalty_end_time"]
                     events["penalty_type"] = d1["note"]
-                # Goal
                 if d2["type"] == "penalty_shot":
                     events["type"] = "penalty_shot"
                     events["ps_outcome"] = "missed"
                     events["ps_goalie_number"] = d2["goalie_number"][0]
             if len(d1) > 0:
-                if (d1["type"] == "goal") and ("(PS)" in event["event"]):
+                if d1["type"] == "goal":
+                    events["type"] = "goal"
+                if d1["type"] == "goal" and "(PS)" in event["event"]:
                     events["type"] = "penalty_shot"
                     events["ps_outcome"] = "scored"
-                    events["ps_goalie_number"] = d2["goalie_number"][0]
+                    if len(d2["on_ice_minus"]) != 1:
+                        logging.warning(
+                            f"Incorrect number of players on PS. URL: {item['game_event_url']}"
+                        )
+                    events["ps_goalie_number"] = d2["on_ice_minus"][0]
+                if d1["type"] == "note" and d1["note"] == "PenaltyShot":
+                    events["type"] = "Penalty Shot"
+
+            sql = self.generate_sql_dict("game_events", events)
+            self.cur.execute(sql, list(events.values()))
+
+            # Goal
+            if len(d1) > 0:
                 if d1["type"] == "goal":
-                    plus_minus = {"swehockey_id": swehockey_id}
+                    plus_minus = {
+                        "swehockey_id": swehockey_id,
+                        "event_id": self.cur.lastrowid,
+                    }
 
                     for num in d1["on_ice_plus"]:
                         plus_minus["side"] = "plus"
@@ -260,12 +279,43 @@ class SwehockeyPipeline:
                         sql = self.generate_sql_dict("plus_minus", plus_minus)
                         self.cur.execute(sql, list(plus_minus.values()))
 
-            sql = self.generate_sql_dict("game_events", events)
-            self.cur.execute(sql, list(events.values()))
+    def insert_shootout(self, item, swehockey_id):
+        if len(item["shootout_events"]) > 1:
+            for attempt in item["shootout_events"]:
+                shootout = {"swehockey_id": swehockey_id}
+                shootout["scored"] = attempt["scored"]
+                shootout["score"] = attempt["score"]
+                shootout["team"] = attempt["team"]
+                shootout["player_first_name"] = attempt["player"][2]
+                shootout["player_last_name"] = attempt["player"][1]
+                shootout["player_number"] = attempt["player"][0]
+                shootout["goalie_first_name"] = attempt["goalie"][2]
+                shootout["goalie_last_name"] = attempt["goalie"][1]
+                shootout["goalie_number"] = attempt["goalie"][0]
+
+                sql = self.generate_sql_dict("shootouts", shootout)
+                self.cur.execute(sql, list(shootout.values()))
+
+    def create_shootouts_table(self):
+        self.cur.execute(
+            """CREATE TABLE shootouts(
+        swehockey_id INT,
+        scored TEXT,
+        score TEXT,
+        team TEXT,
+        player_first_name TEXT,
+        player_last_name TEXT,
+        player_number TEXT,
+        goalie_first_name TEXT,
+        goalie_last_name TEXT,
+        goalie_number TEXT
+        )"""
+        )
 
     def create_plus_minus_table(self):
         self.cur.execute(
             """CREATE TABLE plus_minus(
+        event_id INT,
         swehockey_id INT,
         side TEXT,
         num INT
@@ -329,11 +379,9 @@ class SwehockeyPipeline:
         self.insert_score_by_period(item, swehockey_id)
         self.insert_goalie_stats(item, swehockey_id)
         self.insert_game_events(item, swehockey_id)
+        self.insert_shootout(item, swehockey_id)
 
         # TODO:
-        # date_time
-        # game_events
-        # shootout_events
         # Players -> player table with ID
         # Teams -> teams table with ID
         # Leagues -> league table with ID

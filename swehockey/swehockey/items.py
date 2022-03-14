@@ -124,7 +124,6 @@ class BasicStatsItem(scrapy.Item):
     home_name = scrapy.Field()
     away_name = scrapy.Field()
     date_time = scrapy.Field(
-        input_processor=MapCompose(clean, str.split),
         output_processor=Identity(),
     )
     league = scrapy.Field()
