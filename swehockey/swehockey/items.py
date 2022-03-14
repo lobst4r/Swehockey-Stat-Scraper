@@ -65,7 +65,7 @@ def parse_player(name=""):
     player = clean_list(name.replace(".", ",").split(","))
     # if len(player) == 3:
     #     player[0] = int(player[0])
-    return [ player ]
+    return [player]
 
 
 def parse_event_detail(event):
@@ -194,7 +194,7 @@ class BasicStatsItem(scrapy.Item):
 
     game_events = scrapy.Field(output_processor=Identity())
     shootout_events = scrapy.Field(output_processor=Identity())
-    lineup = scrapy.Field(output_processor=Identity())
+    lineup = scrapy.Field()
 
 
 class EventItem(scrapy.Item):
@@ -224,8 +224,8 @@ class ShootoutItem(scrapy.Item):
 class LineupItem(scrapy.Item):
     refs = scrapy.Field(input_processor=MapCompose(separate_names, clean), output_processor=Identity())
     linesmen = scrapy.Field(input_processor=MapCompose(separate_names, clean), output_processor=Identity())
-    home_team_coaches = scrapy.Field(output_processor=Identity())
-    away_team_coaches = scrapy.Field(output_processor=Identity())
+    home_team_coaches = scrapy.Field(input_processor=MapCompose(clean, parse_player), output_processor=Identity())
+    away_team_coaches = scrapy.Field(input_processor=MapCompose(clean, parse_player), output_processor=Identity())
     lineup_home = scrapy.Field(output_processor=Identity())
     lineup_away = scrapy.Field(output_processor=Identity())
     starting_players_lineup_home = scrapy.Field(input_processor=MapCompose(clean, parse_player), output_processor=Identity())
