@@ -12,7 +12,7 @@ import logging
 
 class SwehockeyPipeline:
     def __init__(self):
-        self.con = sqlite3.connect("test5.db")
+        self.con = sqlite3.connect("db_first_test.db")
         self.cur = self.con.cursor()
         self.create_games_table()
         self.create_lines_table()
@@ -25,32 +25,32 @@ class SwehockeyPipeline:
 
     def create_goalie_stats_table(self):
         self.cur.execute(
-            """CREATE TABLE goalie_stats(
-        swehockey_id INT,
+            """CREATE TABLE IF NOT EXISTS goalie_stats(
+        swehockey_id INTEGER,
         team_name TEXT,
         first_name TEXT,
         last_name TEXT,
-        player_number INT,
-        saves TEXT,
-        shots TEXT
+        player_number INTEGER,
+        saves INTEGER,
+        shots INTEGER
         )"""
         )
 
     def create_stats_by_period_table(self):
         self.cur.execute(
-            """CREATE TABLE stats_by_period(
-        swehockey_id INT,
+            """CREATE TABLE IF NOT EXISTS stats_by_period(
+        swehockey_id INTEGER,
         team_name TEXT,
         stat_name TEXT,
-        period INT,
-        stat INT
+        period INTEGER,
+        stat INTEGER
         )"""
         )
 
     def create_refs_table(self):
         self.cur.execute(
-            """CREATE TABLE refs(
-        swehockey_id INT,
+            """CREATE TABLE IF NOT EXISTS refs(
+        swehockey_id INTEGER,
         ref_name TEXT,
         position TEXT
         )"""
@@ -58,27 +58,27 @@ class SwehockeyPipeline:
 
     def create_lines_table(self):
         self.cur.execute(
-            """CREATE TABLE lines(
-            swehockey_id INT,
+            """CREATE TABLE IF NOT EXISTS lines(
+            swehockey_id INTEGER,
             team TEXT,
             line_name TEXT,
-            player_first_name,
-            player_last_name,
-            player_number,
-            starting INT
+            player_first_name TEXT,
+            player_last_name TEXT,
+            player_number INTEGER,
+            starting INTEGER
 
 )"""
         )
 
     def create_games_table(self):
         self.cur.execute(
-            """CREATE TABLE games(
+            """CREATE TABLE IF NOT EXISTS games(
             id INTEGER PRIMARY KEY,
-            swehockey_id INT UNIQUE,
+            swehockey_id INTEGER UNIQUE,
             date TEXT,
             arena TEXT,
-            score_home INT, 
-            score_away INT,
+            score_home INTEGER, 
+            score_away INTEGER,
             home_name TEXT,
             home_name_abbrev TEXT,
             away_name TEXT,
@@ -86,17 +86,17 @@ class SwehockeyPipeline:
             event_url TEXT,
             league TEXT,
             line_up_url TEXT,
-            pim_total_team_1 INT,
-            pim_total_team_2 INT,
-            pp_perc_team_1 FLOAT,
-            pp_perc_team_2 FLOAT,
+            pim_total_team_1 INTEGER,
+            pim_total_team_2 INTEGER,
+            pp_perc_team_1 REAL,
+            pp_perc_team_2 REAL,
             pp_time_team_1 TEXT,
             pp_time_team_2 TEXT,
-            saves_total_team_1 INT,
-            saves_total_team_2 INT,
-            shots_total_team_1 INT,
-            shots_total_team_2 INT,
-            spectators INT
+            saves_total_team_1 INTEGER,
+            saves_total_team_2 INTEGER,
+            shots_total_team_1 INTEGER,
+            shots_total_team_2 INTEGER,
+            spectators INTEGER
         )"""
         )
 
@@ -300,53 +300,53 @@ class SwehockeyPipeline:
 
     def create_shootouts_table(self):
         self.cur.execute(
-            """CREATE TABLE shootouts(
-        swehockey_id INT,
+            """CREATE TABLE IF NOT EXISTS shootouts(
+        swehockey_id INTEGER,
         scored TEXT,
         score TEXT,
         team TEXT,
         player_first_name TEXT,
         player_last_name TEXT,
-        player_number TEXT,
+        player_number INTEGER,
         goalie_first_name TEXT,
         goalie_last_name TEXT,
-        goalie_number TEXT
+        goalie_number INTEGER
         )"""
         )
 
     def create_plus_minus_table(self):
         self.cur.execute(
-            """CREATE TABLE plus_minus(
-        event_id INT,
-        swehockey_id INT,
+            """CREATE TABLE IF NOT EXISTS plus_minus(
+        event_id INTEGER,
+        swehockey_id INTEGER,
         side TEXT,
-        num INT
+        num INTEGER
         )"""
         )
 
     def create_game_events_table(self):
         self.cur.execute(
-            """CREATE TABLE game_events(
+            """CREATE TABLE IF NOT EXISTS game_events(
         id INTEGER PRIMARY KEY,
-            swehockey_id INT,
+            swehockey_id INTEGER,
             time TEXT,
             team TEXT,
             event TEXT,
             player_first_name TEXT,
             player_last_name TEXT,
-            player_number INT,
+            player_number INTEGER,
             assist_1_first_name TEXT,
             assist_1_last_name TEXT,
-            assist_1_number TEXT,
+            assist_1_number INTEGER,
             assist_2_first_name TEXT,
             assist_2_last_name TEXT,
-            assist_2_number TEXT,
+            assist_2_number INTEGER,
             type TEXT,
             penalty_type TEXT,
             penalty_start_time TEXT,
             penalty_end_time TEXT,
             ps_outcome TEXT,
-            ps_goalie_number INT
+            ps_goalie_number INTEGER
         )"""
         )
 

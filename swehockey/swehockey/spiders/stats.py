@@ -15,8 +15,8 @@ import re
 import logging
 
 
-START_DATE = "2022-03-06"
-END_DATE = "2022-03-06"
+START_DATE = "2000-01-01"
+END_DATE = "2004-12-31"
 
 
 class StatsSpider(scrapy.Spider):
