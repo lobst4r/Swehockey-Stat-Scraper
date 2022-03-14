@@ -15,8 +15,8 @@ import re
 import logging
 
 
-START_DATE = "2010-01-01"
-END_DATE = "2013-12-31"
+START_DATE = "2014-01-04"
+END_DATE = "2014-01-04"
 
 
 class StatsSpider(scrapy.Spider):
@@ -212,7 +212,7 @@ class StatsSpider(scrapy.Spider):
         return f".//tr[{tr}]/td[{td}]/text()"
 
     def get_goalies_xpath(self, td):
-        return f"(.//tr/th/h3)[2]/ancestor::tr[1]/preceding-sibling::tr/td[{td}]/text()"
+        return f"(.//tr/th/h3[contains(text(), 'period') or contains(text(), 'Game Winning Shot') or contains(text(), 'overtime') or contains(text(), 'Overtime')])[1]/ancestor::tr[1]/preceding-sibling::tr/td[{td}]/text()"
         # return [clean(team.xpath(".//text()").get()) for team in goalies]
 
     def get_lines(self, response, line_up_raw, item, line_name, swehockey_id):

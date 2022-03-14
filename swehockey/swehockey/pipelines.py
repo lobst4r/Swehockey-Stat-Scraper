@@ -12,7 +12,7 @@ import logging
 
 class SwehockeyPipeline:
     def __init__(self):
-        self.con = sqlite3.connect("db_temp.db")
+        self.con = sqlite3.connect("db_first_test_3.db")
         self.cur = self.con.cursor()
         self.create_games_table()
         self.create_lines_table()
@@ -35,7 +35,8 @@ class SwehockeyPipeline:
         player_number INTEGER,
         goalie_first_name TEXT,
         goalie_last_name TEXT,
-        goalie_number INTEGER
+        goalie_number INTEGER,
+        UNIQUE (swehockey_id, scored, score, team, player_number, goalie_number) ON CONFLICT IGNORE
         )"""
         )
 
@@ -45,7 +46,8 @@ class SwehockeyPipeline:
         event_id INTEGER,
         swehockey_id INTEGER,
         side TEXT,
-        num INTEGER
+        num INTEGER,
+        UNIQUE (event_id, swehockey_id, side, num) ON CONFLICT IGNORE
         )"""
         )
 
@@ -71,7 +73,8 @@ class SwehockeyPipeline:
             penalty_start_time TEXT,
             penalty_end_time TEXT,
             ps_outcome TEXT,
-            ps_goalie_number INTEGER
+            ps_goalie_number INTEGER,
+            UNIQUE (swehockey_id, time, team, event, player_number, assist_1_number, assist_2_number, type, penalty_type, penalty_start_time, penalty_end_time, ps_outcome, ps_goalie_number) ON CONFLICT IGNORE
         )"""
         )
 
@@ -84,7 +87,8 @@ class SwehockeyPipeline:
         last_name TEXT,
         player_number INTEGER,
         saves INTEGER,
-        shots INTEGER
+        shots INTEGER,
+        UNIQUE (swehockey_id, team_name, player_number, saves, shots) ON CONFLICT IGNORE
         )"""
         )
 
@@ -95,7 +99,8 @@ class SwehockeyPipeline:
         team_name TEXT,
         stat_name TEXT,
         period INTEGER,
-        stat INTEGER
+        stat INTEGER,
+        UNIQUE (swehockey_id, team_name, stat_name, period, stat) ON CONFLICT IGNORE
         )"""
         )
 
@@ -104,7 +109,8 @@ class SwehockeyPipeline:
             """CREATE TABLE IF NOT EXISTS refs(
         swehockey_id INTEGER,
         ref_name TEXT,
-        position TEXT
+        position TEXT,
+        UNIQUE (swehockey_id, ref_name, position) ON CONFLICT IGNORE
         )"""
         )
 
@@ -117,8 +123,8 @@ class SwehockeyPipeline:
             player_first_name TEXT,
             player_last_name TEXT,
             player_number INTEGER,
-            starting INTEGER
-
+            starting INTEGER,
+            UNIQUE (swehockey_id, team, line_name, player_first_name, player_last_name, player_number, starting) ON CONFLICT IGNORE
 )"""
         )
 
@@ -155,7 +161,11 @@ class SwehockeyPipeline:
     def generate_sql_dict(self, table, d):
         cols = ", ".join(d.keys())
         var_str = ", ".join("?" * len(d))
-        return "INSERT INTO %s (%s) VALUES (%s)" % (table, cols, var_str)
+        return "INSERT OR IGNORE INTO %s (%s) VALUES (%s)" % (
+            table,
+            cols,
+            var_str,
+        )
 
     def execute_db_query(self, sql):
         pass
@@ -246,19 +256,20 @@ class SwehockeyPipeline:
 
     def insert_goalie_stats(self, item, swehockey_id):
         stats = {"swehockey_id": swehockey_id}
-        for goalie, saves, team in zip(
-            item["goalies_names"],
-            item["goalies_saves"],
-            item["goalies_teams"],
-        ):
-            stats["first_name"] = goalie[2]
-            stats["last_name"] = goalie[1]
-            stats["player_number"] = goalie[0]
-            stats["shots"] = saves.split("/")[1]
-            stats["saves"] = saves.split("/")[0]
-            stats["team_name"] = team
-            sql = self.generate_sql_dict("goalie_stats", stats)
-            self.cur.execute(sql, list(stats.values()))
+        if len(item["goalies_names"]) > 1:
+            for goalie, saves, team in zip(
+                item["goalies_names"],
+                item["goalies_saves"],
+                item["goalies_teams"],
+            ):
+                stats["first_name"] = goalie[2]
+                stats["last_name"] = goalie[1]
+                stats["player_number"] = goalie[0]
+                stats["shots"] = saves.split("/")[1]
+                stats["saves"] = saves.split("/")[0]
+                stats["team_name"] = team
+                sql = self.generate_sql_dict("goalie_stats", stats)
+                self.cur.execute(sql, list(stats.values()))
 
     def insert_game_events(self, item, swehockey_id):
         for event in item["game_events"]:
