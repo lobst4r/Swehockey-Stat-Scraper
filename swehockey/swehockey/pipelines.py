@@ -77,6 +77,8 @@ class SwehockeyPipeline:
             swehockey_id INT UNIQUE,
             date TEXT,
             arena TEXT,
+            score_home INT, 
+            score_away INT,
             home_name TEXT,
             home_name_abbrev TEXT,
             away_name TEXT,
@@ -84,17 +86,17 @@ class SwehockeyPipeline:
             event_url TEXT,
             league TEXT,
             line_up_url TEXT,
-            pim_total_team_1 INTEGER,
-            pim_total_team_2 INTEGER,
-            pp_perc_team_1 REAL,
-            pp_perc_team_2 REAL,
+            pim_total_team_1 INT,
+            pim_total_team_2 INT,
+            pp_perc_team_1 FLOAT,
+            pp_perc_team_2 FLOAT,
             pp_time_team_1 TEXT,
             pp_time_team_2 TEXT,
-            saves_total_team_1 INTEGER,
-            saves_total_team_2 INTEGER,
-            shots_total_team_1 INTEGER,
-            shots_total_team_2 INTEGER,
-            spectators INTEGER
+            saves_total_team_1 INT,
+            saves_total_team_2 INT,
+            shots_total_team_1 INT,
+            shots_total_team_2 INT,
+            spectators INT
         )"""
         )
 
@@ -386,31 +388,32 @@ class SwehockeyPipeline:
         # Teams -> teams table with ID
         # Leagues -> league table with ID
         # swehockey id -> auto id
-
-        # self.cur.execute(
-        #     """INSERT OR IGNORE INTO games VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        #     (
-        #         item["swehockey_id"],
-        #         item["arena"],
-        #         item["home_name"],
-        #         item["home_name_abbrev"],
-        #         item["away_name"],
-        #         item["away_name_abbrev"],
-        #         item["event_url"],
-        #         item["league"],
-        #         item["line_up_url"],
-        #         item["pim_total_team_1"],
-        #         item["pim_total_team_2"],
-        #         item["pp_perc_team_1"],
-        #         item["pp_perc_team_2"],
-        #         item["pp_time_team_1"],
-        #         item["pp_time_team_2"],
-        #         item["saves_total_team_1"],
-        #         item["saves_total_team_2"],
-        #         item["shots_total_team_1"],
-        #         item["shots_total_team_2"],
-        #         item["spectators"],
-        #     ),
-        # )
+        basic_stats = {
+            "swehockey_id": item["swehockey_id"],
+            "date": item["date_time"],
+            "arena": item["arena"],
+            "score_home": score_home,
+            "score_away": score_away,
+            "home_name": item["home_name"],
+            "home_name_abbrev": item["home_name_abbrev"],
+            "away_name": item["away_name"],
+            "away_name_abbrev": item["away_name_abbrev"],
+            "event_url": item["event_url"],
+            "league": item["league"],
+            "line_up_url": item["line_up_url"],
+            "pim_total_team_1": item["pim_total_team_1"],
+            "pim_total_team_2": item["pim_total_team_2"],
+            "pp_perc_team_1": item["pp_perc_team_1"],
+            "pp_perc_team_2": item["pp_perc_team_2"],
+            "pp_time_team_1": item["pp_time_team_1"],
+            "pp_time_team_2": item["pp_time_team_2"],
+            "saves_total_team_1": item["saves_total_team_1"],
+            "saves_total_team_2": item["saves_total_team_2"],
+            "shots_total_team_1": item["shots_total_team_1"],
+            "shots_total_team_2": item["shots_total_team_2"],
+            "spectators": item["spectators"],
+        }
+        sql = self.generate_sql_dict("games", basic_stats)
+        self.cur.execute(sql, list(basic_stats.values()))
         self.con.commit()
         return item

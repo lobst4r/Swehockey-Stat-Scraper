@@ -123,9 +123,7 @@ class BasicStatsItem(scrapy.Item):
     away_name_abbrev = scrapy.Field()
     home_name = scrapy.Field()
     away_name = scrapy.Field()
-    date_time = scrapy.Field(
-        output_processor=Identity(),
-    )
+    date_time = scrapy.Field()
     league = scrapy.Field()
     arena = scrapy.Field()
     shots_total_team_1 = scrapy.Field()
