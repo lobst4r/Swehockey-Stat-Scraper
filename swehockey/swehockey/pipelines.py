@@ -12,7 +12,7 @@ import logging
 
 class SwehockeyPipeline:
     def __init__(self):
-        self.con = sqlite3.connect("db_first_test.db")
+        self.con = sqlite3.connect("db_temp.db")
         self.cur = self.con.cursor()
         self.create_games_table()
         self.create_lines_table()
@@ -22,6 +22,58 @@ class SwehockeyPipeline:
         self.create_plus_minus_table()
         self.create_game_events_table()
         self.create_shootouts_table()
+
+    def create_shootouts_table(self):
+        self.cur.execute(
+            """CREATE TABLE IF NOT EXISTS shootouts(
+        swehockey_id INTEGER,
+        scored TEXT,
+        score TEXT,
+        team TEXT,
+        player_first_name TEXT,
+        player_last_name TEXT,
+        player_number INTEGER,
+        goalie_first_name TEXT,
+        goalie_last_name TEXT,
+        goalie_number INTEGER
+        )"""
+        )
+
+    def create_plus_minus_table(self):
+        self.cur.execute(
+            """CREATE TABLE IF NOT EXISTS plus_minus(
+        event_id INTEGER,
+        swehockey_id INTEGER,
+        side TEXT,
+        num INTEGER
+        )"""
+        )
+
+    def create_game_events_table(self):
+        self.cur.execute(
+            """CREATE TABLE IF NOT EXISTS game_events(
+        id INTEGER PRIMARY KEY,
+            swehockey_id INTEGER,
+            time TEXT,
+            team TEXT,
+            event TEXT,
+            player_first_name TEXT,
+            player_last_name TEXT,
+            player_number INTEGER,
+            assist_1_first_name TEXT,
+            assist_1_last_name TEXT,
+            assist_1_number INTEGER,
+            assist_2_first_name TEXT,
+            assist_2_last_name TEXT,
+            assist_2_number INTEGER,
+            type TEXT,
+            penalty_type TEXT,
+            penalty_start_time TEXT,
+            penalty_end_time TEXT,
+            ps_outcome TEXT,
+            ps_goalie_number INTEGER
+        )"""
+        )
 
     def create_goalie_stats_table(self):
         self.cur.execute(
@@ -297,58 +349,6 @@ class SwehockeyPipeline:
 
                 sql = self.generate_sql_dict("shootouts", shootout)
                 self.cur.execute(sql, list(shootout.values()))
-
-    def create_shootouts_table(self):
-        self.cur.execute(
-            """CREATE TABLE IF NOT EXISTS shootouts(
-        swehockey_id INTEGER,
-        scored TEXT,
-        score TEXT,
-        team TEXT,
-        player_first_name TEXT,
-        player_last_name TEXT,
-        player_number INTEGER,
-        goalie_first_name TEXT,
-        goalie_last_name TEXT,
-        goalie_number INTEGER
-        )"""
-        )
-
-    def create_plus_minus_table(self):
-        self.cur.execute(
-            """CREATE TABLE IF NOT EXISTS plus_minus(
-        event_id INTEGER,
-        swehockey_id INTEGER,
-        side TEXT,
-        num INTEGER
-        )"""
-        )
-
-    def create_game_events_table(self):
-        self.cur.execute(
-            """CREATE TABLE IF NOT EXISTS game_events(
-        id INTEGER PRIMARY KEY,
-            swehockey_id INTEGER,
-            time TEXT,
-            team TEXT,
-            event TEXT,
-            player_first_name TEXT,
-            player_last_name TEXT,
-            player_number INTEGER,
-            assist_1_first_name TEXT,
-            assist_1_last_name TEXT,
-            assist_1_number INTEGER,
-            assist_2_first_name TEXT,
-            assist_2_last_name TEXT,
-            assist_2_number INTEGER,
-            type TEXT,
-            penalty_type TEXT,
-            penalty_start_time TEXT,
-            penalty_end_time TEXT,
-            ps_outcome TEXT,
-            ps_goalie_number INTEGER
-        )"""
-        )
 
     def process_item(self, item, spider):
         swehockey_id = item["swehockey_id"]

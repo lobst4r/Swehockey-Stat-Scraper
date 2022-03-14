@@ -15,8 +15,8 @@ import re
 import logging
 
 
-START_DATE = "2000-01-01"
-END_DATE = "2004-12-31"
+START_DATE = "2010-01-01"
+END_DATE = "2013-12-31"
 
 
 class StatsSpider(scrapy.Spider):
@@ -146,8 +146,9 @@ class StatsSpider(scrapy.Spider):
 
         # Find the last period of the game (including overtime) and extract data from each period
         actions = events.xpath(
-            "(.//tr/th/h3[contains(text(), 'Overtime') or contains(text(), 'overtime') or contains(text(), '3rd period')])[1]/ancestor::node()/following-sibling::tr[not(.//th)]"
+            "(.//tr/th/h3[contains(text(), 'Overtime') or contains(text(), 'overtime') or contains(text(), '3rd period') or contains(text(), '2nd period') or contains(text(), '1st period') ])[1]/ancestor::node()/following-sibling::tr[not(.//th)]"
         )
+
         if not actions:
             logging.warning(f"No game events found. Possible irregularity in html. URL: https://stats.swehockey.se/Game/Events/{swehockey_id}")
         for action in actions:
@@ -164,7 +165,7 @@ class StatsSpider(scrapy.Spider):
 
         # Get shootout data (if any)
         shootout_actions = response.xpath(
-            "((//table[@class='tblContent'])[2]/tr/th/h3[contains(text(), 'Game Winning Shots')])[1]/ancestor::tr[1]/following-sibling::tr/th/ancestor::tr[1]/preceding-sibling::tr/td[contains(text(), 'Missed') or contains(text(), 'Scored')]/ancestor::tr[1]"
+            "((//table[@class='tblContent'])[2]/tr/th/h3[contains(text(), 'Game Winning Shots')])[1]/ancestor::tr[1]/following-sibling::tr/th/ancestor::tr[1]/preceding-sibling::tr/td/div[contains(text(), 'vs. goalie')]/ancestor::tr[1]"
         )
         if shootout_actions:
             for action in shootout_actions:
