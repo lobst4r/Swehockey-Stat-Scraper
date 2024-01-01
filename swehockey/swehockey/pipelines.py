@@ -9,10 +9,12 @@ from itemadapter import ItemAdapter
 import sqlite3
 import logging
 
+DB_PATH = "db_name_here_1.db"
+
 
 class SwehockeyPipeline:
     def __init__(self):
-        self.con = sqlite3.connect("db_first_test_3.db")
+        self.con = sqlite3.connect(DB_PATH)
         self.cur = self.con.cursor()
         self.create_games_table()
         self.create_lines_table()
@@ -171,7 +173,6 @@ class SwehockeyPipeline:
         pass
 
     def insert_coaches(self, item, team, swehockey_id):
-
         line = {
             "team": team,
             "swehockey_id": swehockey_id,
